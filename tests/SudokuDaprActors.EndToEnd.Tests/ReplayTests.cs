@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text.Json;
 using static SudokuDaprActors.EndToEnd.Tests.GameApi;
 
@@ -50,6 +51,77 @@ public class ReplayTests(App app)
             (move.GetProperty("row").GetInt32(), move.GetProperty("column").GetInt32(), move.GetProperty("digit").GetInt32())));
         Assert.Equal((null, null), PlacementOf(grid, 2, 4));
         Assert.Equal((null, null), PlacementOf(grid, 5, 5));
+    }
+
+    [Fact]
+    public async Task Placing_exactly_the_next_recorded_move_is_a_new_move_that_discards_the_ones_after_it()
+    {
+        var id = await app.Api.CreateGameAsync();
+        await app.Api.PlayAsync(id, 1, 1, 5);
+        await app.Api.PlayAsync(id, 2, 4, 5);
+        await app.Api.PlayAsync(id, 5, 5, 7);
+        await app.Api.ReplayAsync(id, 1);
+
+        var grid = await app.Api.PlayAsync(id, 2, 4, 5);
+
+        Assert.Equal(2, PositionOf(grid));
+        Assert.Equal("""[{"row":1,"column":1,"digit":5,"deductions":0},{"row":2,"column":4,"digit":5,"deductions":0}]""", MoveHistoryOf(grid));
+    }
+
+    [Fact]
+    public async Task An_unchanged_or_rejected_move_at_an_earlier_position_keeps_the_later_moves()
+    {
+        var id = await app.Api.CreateGameAsync();
+        await app.Api.PlayAsync(id, 1, 1, 5);
+        await app.Api.PlayAsync(id, 2, 4, 5);
+        var moves = MoveHistoryOf(await app.Api.PlayAsync(id, 5, 5, 7));
+        await app.Api.ReplayAsync(id, 1);
+
+        var unchanged = await app.Api.MoveAsync(id, 1, 1, 5);
+        var rejected = await app.Api.MoveAsync(id, 1, 2, 5); // 5 is no longer a candidate in row 1
+
+        Assert.Equal(HttpStatusCode.OK, unchanged.StatusCode);
+        Assert.Equal(HttpStatusCode.Conflict, rejected.StatusCode);
+        var grid = await app.Api.GetGameAsync(id);
+        Assert.Equal(1, PositionOf(grid));
+        Assert.Equal(moves, MoveHistoryOf(grid));
+    }
+
+    [Fact]
+    public async Task Replaying_to_the_last_move_gives_the_same_grid_as_the_live_game()
+    {
+        var id = await app.Api.CreateGameAsync();
+        var live = (await app.Api.PlayGivensAsync(id, 20))[^1];
+
+        var replayed = await app.Api.ReplayAsync(id, MovesOf(live).Count);
+
+        Assert.Equal(live.GetRawText(), replayed.GetRawText());
+    }
+
+    [Fact]
+    public async Task Setting_the_same_position_twice_gives_the_same_grid()
+    {
+        var id = await app.Api.CreateGameAsync();
+        await app.Api.PlayAsync(id, 1, 1, 5);
+        await app.Api.PlayAsync(id, 2, 4, 5);
+
+        var first = await app.Api.ReplayAsync(id, 1);
+        var second = await app.Api.ReplayAsync(id, 1);
+
+        Assert.Equal(first.GetRawText(), second.GetRawText());
+    }
+
+    [Fact]
+    public async Task Two_fresh_games_given_the_same_moves_reach_the_same_grid()
+    {
+        var first = await app.Api.CreateGameAsync();
+        var second = await app.Api.CreateGameAsync();
+
+        var firstGrid = (await app.Api.PlayGivensAsync(first, 20))[^1];
+        var secondGrid = (await app.Api.PlayGivensAsync(second, 20))[^1];
+
+        Assert.Equal(CellsOf(firstGrid), CellsOf(secondGrid));
+        Assert.Equal(MoveHistoryOf(firstGrid), MoveHistoryOf(secondGrid));
     }
 
     [Fact]

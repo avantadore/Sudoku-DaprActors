@@ -18,6 +18,8 @@ public class MoveTests(App app)
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var grid = await ReadJsonAsync(response);
+        Assert.Equal(id, grid.GetProperty("id").GetString());
+        AssertGridShape(grid);
         var cell = CellOf(grid, 2, 3);
         Assert.Equal(8, cell.GetProperty("digit").GetInt32());
         Assert.Equal("Move", cell.GetProperty("source").GetString());
@@ -38,40 +40,54 @@ public class MoveTests(App app)
     }
 
     [Fact]
-    public async Task A_move_on_a_digit_a_peer_holds_is_rejected_because_it_is_no_candidate()
+    public async Task A_move_on_a_digit_a_peer_holds_is_rejected_because_it_is_no_candidate_and_changes_nothing()
     {
         // The previous move's cascade is over before this one is made, so the cell has already lost the digit.
         var id = await app.Api.CreateGameAsync();
-        await app.Api.MoveAsync(id, 5, 5, 4);
+        var before = await app.Api.PlayAsync(id, 5, 5, 4);
 
         var response = await app.Api.MoveAsync(id, 5, 9, 4);
 
         await AssertRejected(response, "4 is not a candidate for cell (5, 9).");
+        Assert.Equal(before.GetRawText(), (await app.Api.GetGameAsync(id)).GetRawText());
     }
 
     [Fact]
-    public async Task A_move_on_a_filled_cell_is_rejected_because_placements_are_final()
+    public async Task A_move_on_a_filled_cell_is_rejected_because_placements_are_final_and_changes_nothing()
     {
         var id = await app.Api.CreateGameAsync();
-        await app.Api.MoveAsync(id, 7, 1, 2);
+        var before = await app.Api.PlayAsync(id, 7, 1, 2);
 
         var response = await app.Api.MoveAsync(id, 7, 1, 6);
 
         await AssertRejected(response, "Cell (7, 1) already holds 2, and placements are final.");
+        Assert.Equal(before.GetRawText(), (await app.Api.GetGameAsync(id)).GetRawText());
     }
 
     [Fact]
-    public async Task The_same_digit_again_leaves_the_grid_unchanged()
+    public async Task The_same_digit_again_returns_200_with_the_unchanged_grid()
     {
         var id = await app.Api.CreateGameAsync();
-        await app.Api.MoveAsync(id, 9, 9, 1);
+        var before = await app.Api.PlayAsync(id, 9, 9, 1);
 
         var response = await app.Api.MoveAsync(id, 9, 9, 1);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var grid = await ReadJsonAsync(response);
-        Assert.Equal(1, CellOf(grid, 9, 9).GetProperty("digit").GetInt32());
-        Assert.Single(grid.GetProperty("moves").EnumerateArray());
+        Assert.Equal(before.GetRawText(), grid.GetRawText());
+        Assert.Single(MovesOf(grid));
+    }
+
+    [Fact]
+    public async Task Reading_a_filled_cells_candidates_returns_its_digit()
+    {
+        var id = await app.Api.CreateGameAsync();
+        await app.Api.PlayAsync(id, 4, 7, 3);
+
+        var response = await app.Api.GetCandidatesAsync(id, 4, 7);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal([3], DigitsOf(await ReadJsonAsync(response)));
     }
 
     [Fact]

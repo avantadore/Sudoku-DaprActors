@@ -1,6 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using SudokuDaprActors.Core.Tests;
 
 namespace SudokuDaprActors.EndToEnd.Tests;
 
@@ -41,10 +42,29 @@ internal static class GameApi
         return await api.PlayAsync(id, 2, 7, 9);
     }
 
+    /// <summary>
+    /// Plays the first <paramref name="count"/> givens of <see cref="Puzzle"/>, each of which the test expects to be
+    /// accepted or unchanged, and returns the grid each leaves.
+    /// </summary>
+    public static async Task<List<JsonElement>> PlayGivensAsync(this HttpClient api, string id, int count = int.MaxValue)
+    {
+        List<JsonElement> grids = [];
+        foreach (var (row, column, digit) in Puzzle.Givens.Take(count))
+        {
+            // A given may already have been deduced from earlier givens, which leaves the move unchanged.
+            grids.Add(await api.PlayAsync(id, row, column, digit));
+        }
+
+        return grids;
+    }
+
+    public static Task<HttpResponseMessage> SetPositionAsync(this HttpClient api, string id, int position) =>
+        api.PutAsJsonAsync($"/games/{id}/position", new { position }, Cancellation);
+
     /// <summary>Replays the game to <paramref name="position"/>, which the test expects to succeed.</summary>
     public static async Task<JsonElement> ReplayAsync(this HttpClient api, string id, int position)
     {
-        var response = await api.PutAsJsonAsync($"/games/{id}/position", new { position }, Cancellation);
+        var response = await api.SetPositionAsync(id, position);
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         return await ReadJsonAsync(response);
     }
@@ -52,12 +72,42 @@ internal static class GameApi
     public static async Task<JsonElement> GetGameAsync(this HttpClient api, string id) =>
         await ReadJsonAsync(await api.GetAsync($"/games/{id}", Cancellation));
 
+    public static Task<HttpResponseMessage> GetCandidatesAsync(this HttpClient api, string id, int row, int column) =>
+        api.GetAsync($"/games/{id}/cells/{row}/{column}/candidates", Cancellation);
+
     public static async Task AssertRejected(HttpResponseMessage response, string reason)
     {
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
-        var problem = await ReadJsonAsync(response);
+        var problem = await AssertProblemDetails(response);
         Assert.Equal("Move rejected", problem.GetProperty("title").GetString());
         Assert.Equal(reason, problem.GetProperty("detail").GetString());
+    }
+
+    /// <summary>A problem details response, whose status is the response's. Returns the problem.</summary>
+    public static async Task<JsonElement> AssertProblemDetails(HttpResponseMessage response)
+    {
+        Assert.Equal("application/problem+json", response.Content.Headers.ContentType?.MediaType);
+        var problem = await ReadJsonAsync(response);
+        Assert.Equal((int)response.StatusCode, problem.GetProperty("status").GetInt32());
+        return problem;
+    }
+
+    /// <summary>The grid representation: a flat list of 81 cells, each carrying its own coordinates.</summary>
+    public static void AssertGridShape(JsonElement grid)
+    {
+        Assert.Equal(JsonValueKind.String, grid.GetProperty("state").ValueKind);
+
+        var cells = grid.GetProperty("cells").EnumerateArray().ToList();
+        Assert.Equal(81, cells.Count);
+        Assert.Equal(81, cells.Select(cell => (cell.GetProperty("row").GetInt32(), cell.GetProperty("column").GetInt32())).Distinct().Count());
+        Assert.All(cells, cell =>
+        {
+            Assert.InRange(cell.GetProperty("row").GetInt32(), 1, 9);
+            Assert.InRange(cell.GetProperty("column").GetInt32(), 1, 9);
+            Assert.Contains(cell.GetProperty("digit").ValueKind, new[] { JsonValueKind.Null, JsonValueKind.Number });
+            Assert.Contains(cell.GetProperty("source").ValueKind, new[] { JsonValueKind.Null, JsonValueKind.String });
+            Assert.All(cell.GetProperty("candidates").EnumerateArray(), digit => Assert.Equal(JsonValueKind.Number, digit.ValueKind));
+        });
     }
 
     public static async Task<JsonElement> ReadJsonAsync(HttpResponseMessage response)
@@ -95,6 +145,13 @@ internal static class GameApi
     public static string CellsOf(JsonElement grid) => grid.GetProperty("cells").GetRawText();
 
     public static IReadOnlyList<JsonElement> MovesOf(JsonElement grid) => [.. grid.GetProperty("moves").EnumerateArray()];
+
+    /// <summary>The grid's move history as JSON, to compare move histories by.</summary>
+    public static string MoveHistoryOf(JsonElement grid) => grid.GetProperty("moves").GetRawText();
+
+    public static string StateOf(JsonElement grid) => grid.GetProperty("state").GetString()!;
+
+    public static int PositionOf(JsonElement grid) => grid.GetProperty("position").GetInt32();
 
     /// <summary>How many deductions the last move of the history made.</summary>
     public static int DeductionsOfLastMove(JsonElement grid) => MovesOf(grid)[^1].GetProperty("deductions").GetInt32();
