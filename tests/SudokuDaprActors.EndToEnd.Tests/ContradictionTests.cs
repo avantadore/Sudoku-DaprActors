@@ -28,7 +28,7 @@ public class ContradictionTests(App app)
         Assert.Equal("Contradicted", grid.GetProperty("state").GetString());
         await AssertRejected(await app.Api.MoveAsync(id, 5, 5, 5), InContradiction);
         await AssertRejected(await app.Api.MoveAsync(id, 2, 7, 9), InContradiction);
-        Assert.Equal(7, MovesOf(await GetGameAsync(id)).Count);
+        Assert.Equal(7, MovesOf(await app.Api.GetGameAsync(id)).Count);
     }
 
     [Fact]
@@ -51,7 +51,4 @@ public class ContradictionTests(App app)
         Assert.Equal(DeducedCells(grid), MovesOf(grid).Sum(move => move.GetProperty("deductions").GetInt32()));
         await AssertRejected(await app.Api.MoveAsync(id, 5, 5, 5), InContradiction);
     }
-
-    private async Task<System.Text.Json.JsonElement> GetGameAsync(string id) =>
-        await ReadJsonAsync(await app.Api.GetAsync($"/games/{id}", TestContext.Current.CancellationToken));
 }

@@ -25,9 +25,9 @@ internal sealed class UnitRules
     public static UnitRules From(UnitKind kind, int number, IReadOnlyList<(int Row, int Column)> cells, UnitSnapshot snapshot)
     {
         var rules = new UnitRules(kind, number, cells);
-        for (var digit = 0; digit < 9; digit++)
+        for (var digit = 1; digit <= 9; digit++)
         {
-            rules._holders[digit].IntersectWith(snapshot.Holders[digit]);
+            rules._holders[digit - 1].IntersectWith(snapshot.Holders[digit - 1]);
         }
 
         foreach (var index in snapshot.Filled)

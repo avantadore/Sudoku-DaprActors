@@ -1,3 +1,4 @@
+using System.Text.Json;
 using SudokuDaprActors.Core.Tests;
 using static SudokuDaprActors.EndToEnd.Tests.GameApi;
 
@@ -51,7 +52,7 @@ public class DeductionTests(App app)
     public async Task Deductions_force_further_deductions_until_the_givens_of_a_puzzle_solve_it()
     {
         var id = await app.Api.CreateGameAsync();
-        var grid = default(System.Text.Json.JsonElement);
+        var grid = default(JsonElement);
         foreach (var (row, column, digit) in Puzzle.Givens)
         {
             // A given may already have been deduced from earlier givens, which leaves the move unchanged.

@@ -27,6 +27,9 @@ internal static class GameApi
         return await ReadJsonAsync(response);
     }
 
+    public static async Task<JsonElement> GetGameAsync(this HttpClient api, string id) =>
+        await ReadJsonAsync(await api.GetAsync($"/games/{id}", Cancellation));
+
     public static async Task AssertRejected(HttpResponseMessage response, string reason)
     {
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
