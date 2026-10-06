@@ -17,6 +17,12 @@ public class App : IAsyncLifetime
     /// <summary>A client of the Api.</summary>
     public HttpClient Api { get; private set; } = null!;
 
+    /// <summary>A client of the Cells service's Dapr sidecar, which hosts the actors and reads their state.</summary>
+    public HttpClient CellsSidecar { get; private set; } = null!;
+
+    /// <summary>The connection string of the broker that Dapr pub/sub runs on.</summary>
+    public string MessagingConnectionString { get; private set; } = null!;
+
     public async ValueTask InitializeAsync()
     {
         using var timeout = new CancellationTokenSource(StartTimeout);
@@ -26,11 +32,14 @@ public class App : IAsyncLifetime
         await _app.StartAsync(timeout.Token);
         await _app.ResourceNotifications.WaitForResourceHealthyAsync("api", timeout.Token);
         Api = _app.CreateHttpClient("api");
+        CellsSidecar = new HttpClient { BaseAddress = _app.GetEndpoint("cells-dapr-cli", "http") };
+        MessagingConnectionString = (await _app.GetConnectionStringAsync("messaging", timeout.Token))!;
     }
 
     public async ValueTask DisposeAsync()
     {
         Api?.Dispose();
+        CellsSidecar?.Dispose();
         if (_app is not null)
         {
             await _app.DisposeAsync();

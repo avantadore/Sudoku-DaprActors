@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using SudokuDaprActors.Core;
 
 namespace SudokuDaprActors.Api.Tests;
@@ -29,6 +30,23 @@ public class GridConfigurationTests
         await using var factory = WithGrid("Dapr");
 
         Assert.IsType<DaprGridBackend>(factory.Services.GetRequiredService<IGridBackend>());
+    }
+
+    [Fact]
+    public async Task Grids_on_RabbitMQ_are_suspended_when_idle()
+    {
+        await using var factory = WithGrid("RabbitMQ");
+
+        Assert.Contains(factory.Services.GetServices<IHostedService>(), service => service is IdleGameSuspender);
+    }
+
+    [Fact]
+    public async Task Grids_on_Dapr_actors_are_never_suspended_for_being_idle()
+    {
+        // They hold no broker resources, so an idle grid costs only its actors' state (ADR 0005).
+        await using var factory = WithGrid("Dapr");
+
+        Assert.DoesNotContain(factory.Services.GetServices<IHostedService>(), service => service is IdleGameSuspender);
     }
 
     [Fact]

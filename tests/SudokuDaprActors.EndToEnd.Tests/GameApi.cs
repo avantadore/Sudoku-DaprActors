@@ -27,6 +27,20 @@ internal static class GameApi
         return await ReadJsonAsync(response);
     }
 
+    /// <summary>
+    /// Plays the game into contradiction in 7 moves: row 1 holds 1–6, so 9 can only go in (1,7), (1,8) or (1,9), all
+    /// in the top-right box, and then 9 in (2,7) leaves 9 no place in row 1. Returns the grid the last move leaves.
+    /// </summary>
+    public static async Task<JsonElement> PlayIntoContradictionAsync(this HttpClient api, string id)
+    {
+        for (var digit = 1; digit <= 6; digit++)
+        {
+            await api.PlayAsync(id, 1, digit, digit);
+        }
+
+        return await api.PlayAsync(id, 2, 7, 9);
+    }
+
     /// <summary>Replays the game to <paramref name="position"/>, which the test expects to succeed.</summary>
     public static async Task<JsonElement> ReplayAsync(this HttpClient api, string id, int position)
     {
@@ -76,6 +90,9 @@ internal static class GameApi
         return otherRow == row || otherColumn == column
             || ((otherRow - 1) / 3 == (row - 1) / 3 && (otherColumn - 1) / 3 == (column - 1) / 3);
     }
+
+    /// <summary>The grid's cells as JSON, to compare grids by.</summary>
+    public static string CellsOf(JsonElement grid) => grid.GetProperty("cells").GetRawText();
 
     public static IReadOnlyList<JsonElement> MovesOf(JsonElement grid) => [.. grid.GetProperty("moves").EnumerateArray()];
 

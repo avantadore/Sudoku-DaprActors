@@ -23,12 +23,16 @@ switch (grid)
         builder.AddRabbitMQClient("messaging");
         builder.Services.AddSingleton<IGridBackend>(services =>
             new RabbitMqGridBackend(services.GetRequiredService<IConnectionFactory>()));
+        // A grid holds streams and channels on the broker, so an idle game's grid is suspended (ADR 0004).
+        builder.Services.AddHostedService<IdleGameSuspender>();
         break;
     case "Dapr":
         // Typed proxies talk JSON to the actors, which every caller agrees on (ADR 0005).
         builder.Services.AddSingleton<IActorProxyFactory>(new ActorProxyFactory(new ActorProxyOptions { UseJsonSerialization = true }));
         builder.Services.AddSingleton<Cascades>();
         builder.Services.AddSingleton<Steps>();
+        // No grid is suspended for being idle: it holds nothing on the broker, and a replay or the end of its game
+        // forgets it (ADR 0005).
         builder.Services.AddSingleton<IGridBackend, DaprGridBackend>();
         break;
     case var unknown:
@@ -38,7 +42,6 @@ switch (grid)
 builder.Services.AddSingleton(TimeProvider.System);
 builder.Services.AddSingleton(services => new GameStore(
     services.GetRequiredService<IGridBackend>(), services.GetRequiredService<TimeProvider>(), GameStore.DefaultIdleAfter));
-builder.Services.AddHostedService<IdleGameSuspender>();
 
 var app = builder.Build();
 

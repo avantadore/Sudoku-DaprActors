@@ -6,8 +6,9 @@ namespace SudokuDaprActors.Api;
 /// <summary>
 /// Holds games in memory for the lifetime of the process. A game makes one move at a time by itself, but a request
 /// also reads the grid it leaves behind, so the store hands a game out only while holding that game's semaphore:
-/// one request at a time, held across its awaits. A grid costs what it runs on, such as RabbitMQ streams and
-/// channels, so a game left idle has its grid suspended, to be rebuilt by replay on its next move (ADR 0004).
+/// one request at a time, held across its awaits. A grid on RabbitMQ streams costs streams and channels, so the Api
+/// has an idle game's grid suspended, to be rebuilt by replay on its next move (ADR 0004). A grid on Dapr actors costs
+/// nothing on the broker, so it is never suspended (ADR 0005).
 /// </summary>
 public sealed class GameStore(IGridBackend grids, TimeProvider time, TimeSpan idleAfter) : IAsyncDisposable
 {
