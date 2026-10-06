@@ -140,6 +140,8 @@ public class CellRulesTests
     [Fact]
     public void A_deduction_fills_the_cell_and_announces_it()
     {
+        Assert.True(_cell.CanDeduce(9));
+
         var reaction = _cell.Deduce(9);
 
         AssertFilled(9, PlacementSource.Deduction);
@@ -162,6 +164,7 @@ public class CellRulesTests
         // As when a unit hears its other cells lose the digit before it hears this cell was filled with it.
         _cell.Move(9);
 
+        Assert.False(_cell.CanDeduce(9));
         Assert.Null(_cell.Deduce(9));
         AssertFilled(9, PlacementSource.Move);
     }
@@ -171,6 +174,7 @@ public class CellRulesTests
     {
         _cell.Eliminate(9);
 
+        Assert.False(_cell.CanDeduce(9));
         Assert.Null(_cell.Deduce(9));
         Assert.Null(_cell.Digit);
     }

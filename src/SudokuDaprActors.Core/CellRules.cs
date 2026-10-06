@@ -57,8 +57,10 @@ internal sealed class CellRules
     /// The rules force <paramref name="digit"/> in the cell. A unit's view of its cells can lag, and so can the cell's
     /// own: by the time a deduction arrives, the cell may be filled or the digit gone, and then it is stale and null.
     /// </summary>
-    public Reaction? Deduce(int digit) =>
-        Digit is null && _candidates.Contains(digit) ? Fill(digit, PlacementSource.Deduction) : null;
+    public Reaction? Deduce(int digit) => CanDeduce(digit) ? Fill(digit, PlacementSource.Deduction) : null;
+
+    /// <summary>Whether <see cref="Deduce"/> would place <paramref name="digit"/>, rather than find it stale.</summary>
+    public bool CanDeduce(int digit) => Digit is null && _candidates.Contains(digit);
 
     /// <summary>A peer was filled with <paramref name="digit"/>, so the cell eliminates it.</summary>
     public Reaction Eliminate(int digit)

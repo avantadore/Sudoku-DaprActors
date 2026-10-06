@@ -3,7 +3,9 @@ namespace SudokuDaprActors.Core.Tests;
 public class UnitRulesTests
 {
     // Row 4, its cells (4,1)–(4,9) by index 0–8.
-    private readonly UnitRules _unit = new(UnitKind.Row, 4, [.. Enumerable.Range(1, 9).Select(column => (4, column))]);
+    private static readonly IReadOnlyList<(int Row, int Column)> Row4 = [.. Enumerable.Range(1, 9).Select(column => (4, column))];
+
+    private readonly UnitRules _unit = new(UnitKind.Row, 4, Row4);
 
     [Fact]
     public void A_digit_left_with_one_empty_cell_in_the_unit_is_a_hidden_single_there()
@@ -77,6 +79,28 @@ public class UnitRulesTests
         var reaction = _unit.CandidateLost(4, 7, 6);
 
         ReactionAssert.Equal(new Reaction { Deduction = new Command.PlaceDeduction(4, 8, 6) }, reaction);
+    }
+
+    [Fact]
+    public void A_unit_restored_from_its_snapshot_keeps_which_cells_can_hold_each_digit()
+    {
+        // As a unit's actor does when it is activated again from its saved state.
+        LoseInAllBut(6, 7, 8);
+
+        var restored = UnitRules.From(UnitKind.Row, 4, Row4, _unit.Snapshot());
+
+        ReactionAssert.Equal(new Reaction { Deduction = new Command.PlaceDeduction(4, 8, 6) }, restored.CandidateLost(4, 7, 6));
+    }
+
+    [Fact]
+    public void A_unit_restored_from_its_snapshot_keeps_which_cells_are_filled()
+    {
+        _unit.Filled(4, 8);
+        LoseInAllBut(6, 7, 8);
+
+        var restored = UnitRules.From(UnitKind.Row, 4, Row4, _unit.Snapshot());
+
+        ReactionAssert.None(restored.CandidateLost(4, 7, 6));
     }
 
     private void LoseInAllBut(int digit, params int[] keptColumns)

@@ -21,9 +21,29 @@ internal sealed class UnitRules
         _cells = cells;
     }
 
+    /// <summary>The unit as <paramref name="snapshot"/> left it, as when its state was saved and is read back.</summary>
+    public static UnitRules From(UnitKind kind, int number, IReadOnlyList<(int Row, int Column)> cells, UnitSnapshot snapshot)
+    {
+        var rules = new UnitRules(kind, number, cells);
+        for (var digit = 0; digit < 9; digit++)
+        {
+            rules._holders[digit].IntersectWith(snapshot.Holders[digit]);
+        }
+
+        foreach (var index in snapshot.Filled)
+        {
+            rules._filled[index] = true;
+        }
+
+        return rules;
+    }
+
     public UnitKind Kind { get; }
 
     public int Number { get; }
+
+    public UnitSnapshot Snapshot() =>
+        new([.. _holders.Select(holders => (IReadOnlyList<int>)[.. holders.Order()])], [.. Enumerable.Range(0, 9).Where(index => _filled[index])]);
 
     /// <summary>The cell was filled, so it is no hidden single for the digit it holds.</summary>
     public Reaction Filled(int row, int column)

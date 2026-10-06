@@ -18,4 +18,9 @@
     <Using Include="Xunit" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- The same puzzle the Core tests solve. -->
+    <Compile Include="..\SudokuDaprActors.Core.Tests\Puzzle.cs" Link="Puzzle.cs" />
+  </ItemGroup>
+
 </Project>

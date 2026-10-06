@@ -7,7 +7,13 @@ public sealed record UnitMessage(Guid Grid, UnitMessage.Kinds Kind, int Row, int
 {
     public enum Kinds
     {
-        /// <summary>The cell was filled with the digit. Its peers in the unit eliminate it.</summary>
+        /// <summary>An event: the cell was filled with the digit. Its peers in the unit eliminate it.</summary>
         Filled,
+
+        /// <summary>An event: the cell lost the digit as a candidate. Only the unit's actor hears it.</summary>
+        CandidateLost,
+
+        /// <summary>A command: the unit found the digit a hidden single in the cell, which places it.</summary>
+        PlaceDeduction,
     }
 }

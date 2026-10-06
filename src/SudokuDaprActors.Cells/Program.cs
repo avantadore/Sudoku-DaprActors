@@ -1,3 +1,4 @@
+using Dapr.Actors.Client;
 using SudokuDaprActors.Cells;
 using SudokuDaprActors.Cells.Contracts;
 
@@ -12,8 +13,14 @@ builder.Services.AddActors(options =>
     options.UseJsonSerialization = true;
     options.Actors.RegisterActor<CellActor>(ActorIds.CellType);
     options.Actors.RegisterActor<GridActor>(ActorIds.GridType);
+    options.Actors.RegisterActor<UnitActor>(ActorIds.UnitType);
 });
-builder.Services.AddSingleton<UnitSubscriber>();
+
+// FailingTopic is for end-to-end tests only, to see a move fail when a delivery does.
+builder.Services.AddSingleton(services => new UnitSubscriber(
+    services.GetRequiredService<IActorProxyFactory>(),
+    services.GetRequiredService<ILogger<UnitSubscriber>>(),
+    builder.Configuration["FailingTopic"]));
 
 var app = builder.Build();
 

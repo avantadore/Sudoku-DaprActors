@@ -9,8 +9,21 @@ public static class ActorIds
 
     public const string GridType = "GridActor";
 
+    public const string UnitType = "UnitActor";
+
     /// <summary><c>{grid}</c>.</summary>
     public static ActorId Grid(Guid grid) => new(grid.ToString());
+
+    /// <summary><c>{grid}:row-3</c>: the grid and the unit's topic.</summary>
+    public static ActorId Unit(Guid grid, Unit unit) => new($"{grid}:{unit.Topic}");
+
+    /// <summary>The grid and the unit of a unit's actor id.</summary>
+    public static (Guid Grid, Unit Unit) ParseUnit(ActorId id)
+    {
+        var text = id.GetId();
+        var separator = text.LastIndexOf(':');
+        return (Guid.Parse(text[..separator]), Contracts.Unit.Parse(text[(separator + 1)..]));
+    }
 
     /// <summary><c>{grid}:r3c5</c>.</summary>
     public static ActorId Cell(Guid grid, int row, int column) => new($"{grid}:r{row}c{column}");

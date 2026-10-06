@@ -11,6 +11,10 @@ public sealed record Unit(UnitKind Kind, int Number)
 
     public string Topic => $"{Kind.ToString().ToLowerInvariant()}-{Number}";
 
+    /// <summary>The unit whose <see cref="Topic"/> is <paramref name="topic"/>.</summary>
+    public static Unit Parse(string topic) =>
+        All.SingleOrDefault(unit => unit.Topic == topic) ?? throw new FormatException($"'{topic}' is not a unit's topic.");
+
     /// <summary>Its nine cells, row by row. Boxes are numbered 1–9 row by row from the top left.</summary>
     public IEnumerable<(int Row, int Column)> Cells => Kind switch
     {

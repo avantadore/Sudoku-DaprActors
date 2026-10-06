@@ -7,8 +7,8 @@ namespace SudokuDaprActors.Cells;
 
 /// <summary>
 /// One cell, as a Dapr actor (ADR 0005). It hosts the cell's rules, keeps them in the actor state store, and carries
-/// out what they decide: it announces <c>Filled</c> on the cell's row, column and box topics, reporting the deliveries
-/// to its grid's actor first, and claims any contradiction there.
+/// out what they decide: it announces its events on the cell's row, column and box topics, reporting the deliveries
+/// to its grid's actor first, and claims any contradiction there. It asks that actor before placing a deduction.
 /// </summary>
 internal sealed class CellActor(ActorHost host, DaprClient dapr) : Actor(host), ICellActor
 {
@@ -31,7 +31,22 @@ internal sealed class CellActor(ActorHost host, DaprClient dapr) : Actor(host), 
         return MoveResult.From(outcome);
     }
 
-    public Task EliminateAsync(int digit) => CarryOutAsync(_rules.Eliminate(digit));
+    public async Task EliminateAsync(int digit)
+    {
+        var reaction = _rules.Eliminate(digit);
+
+        // A naked single is placed in the same turn, rather than sent to the cell itself (ADR 0005).
+        var single = reaction.Deduction is { } deduction ? await TryDeduceAsync(deduction.Digit) : null;
+        await CarryOutAsync(reaction, single);
+    }
+
+    public async Task DeduceAsync(int digit)
+    {
+        if (await TryDeduceAsync(digit) is { } reaction)
+        {
+            await CarryOutAsync(reaction);
+        }
+    }
 
     public Task<Cell> GetAsync() => Task.FromResult(_rules.Snapshot());
 
@@ -43,37 +58,48 @@ internal sealed class CellActor(ActorHost host, DaprClient dapr) : Actor(host), 
 
     private IGridActor Grid => ProxyFactory.CreateActorProxy<IGridActor>(ActorIds.Grid(_grid), ActorIds.GridType);
 
-    // Steps and deductions come with their own tickets, and so do the units that hear CandidateLost, so only Filled
-    // is announced for now.
-    private async Task CarryOutAsync(Reaction reaction)
+    // A stale deduction is dropped without asking. Otherwise the grid's actor counts it, unless the grid is in
+    // contradiction, and nothing can change the cell between its answer and the placement: they are one actor turn.
+    private async Task<Reaction?> TryDeduceAsync(int digit) =>
+        _rules.CanDeduce(digit) && await Grid.DeduceAsync() ? _rules.Deduce(digit) : null;
+
+    // Steps come with their own ticket, so only the contradiction and the events are carried out for now.
+    private async Task CarryOutAsync(params Reaction?[] reactions)
     {
-        if (reaction == Reaction.None)
+        List<Reaction> changes = [.. reactions.OfType<Reaction>().Where(reaction => reaction != Reaction.None)];
+        if (changes.Count == 0)
         {
             return;
         }
 
         await StateManager.SetStateAsync(State, _rules.Snapshot());
 
-        if (reaction.Contradiction is not null)
+        if (changes.Any(reaction => reaction.Contradiction is not null))
         {
             await Grid.ContradictAsync();
         }
 
-        var filled = reaction.Announcements.OfType<Event.Filled>().ToList();
-        if (filled.Count == 0)
+        List<UnitMessage> messages = [.. changes.SelectMany(reaction => reaction.Announcements).Select(ToMessage)];
+        if (messages.Count == 0)
         {
             return;
         }
 
         var units = Unit.Of(_rules.Row, _rules.Column);
-        await Grid.ReportAsync(filled.Count * units.Count);
-        foreach (var announcement in filled)
+        await Grid.ReportAsync(messages.Count * units.Count);
+        foreach (var message in messages)
         {
-            var message = new UnitMessage(_grid, UnitMessage.Kinds.Filled, announcement.Row, announcement.Column, announcement.Digit);
             foreach (var unit in units)
             {
                 await dapr.PublishEventAsync(Topics.PubSub, unit.Topic, message);
             }
         }
     }
+
+    private UnitMessage ToMessage(Event announcement) => announcement switch
+    {
+        Event.Filled filled => new(_grid, UnitMessage.Kinds.Filled, filled.Row, filled.Column, filled.Digit),
+        Event.CandidateLost lost => new(_grid, UnitMessage.Kinds.CandidateLost, lost.Row, lost.Column, lost.Digit),
+        _ => throw new InvalidOperationException($"An event of unknown kind {announcement}."),
+    };
 }
