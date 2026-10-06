@@ -1,6 +1,6 @@
 # Cells and units are concurrent channel workers
 
-Status: superseded by ADR 0004 (RabbitMQ streams replaced channel workers). Its concurrency, cascade-over and contradiction rules carry over.
+Status: superseded by ADR 0004 (RabbitMQ streams replaced channel workers), itself superseded by ADR 0005 (Dapr actors). Its concurrency, cascade-over and contradiction rules carry over.
 
 The purpose of the project changed from modelling Sudoku with `IObservable<T>` to modelling it with `System.Threading.Channels`, so Rx.NET is removed entirely. Each of the 81 cells and 27 units (`Row 1`–`9`, `Column 1`–`9`, `Box 1`–`9`, boxes numbered row by row from the top left) is a worker: an async loop on the thread pool reading its own unbounded inbox channel. Commands (`PlaceMove`, `PlaceDeduction`, `EliminateCandidate`) only ever go into a cell's inbox; events (`CellFilled`, `CandidateLost`) only ever go into a unit's inbox. A cell announces its events to its row, column and box; a unit fans a `CellFilled` out as `EliminateCandidate` to its other eight cells and sends `PlaceDeduction` when it finds a hidden single. `Channel<T>` is point-to-point, so a unit is a worker with its own state, not a broadcast bus.
 

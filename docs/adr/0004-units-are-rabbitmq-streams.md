@@ -1,6 +1,6 @@
 # Units are RabbitMQ streams
 
-Status: accepted. Supersedes the channel workers of ADR 0003, and amends ADR 0002 (a grid is a cache rebuilt by replay).
+Status: superseded by ADR 0005 (cells are Dapr actors behind unit subscribers). It superseded the channel workers of ADR 0003, and amended ADR 0002 (a grid is a cache rebuilt by replay).
 
 The purpose of the project changed from modelling Sudoku with `System.Threading.Channels` to modelling it with RabbitMQ, which is publish/subscribe rather than point-to-point. So `System.Threading.Channels` is removed entirely, and a unit is no longer a worker that relays to its cells: it is a topic that its cells talk on. Each grid has 27 unit streams, named `sudoku.grid.<grid>.row.1`–`9`, `sudoku.grid.<grid>.column.1`–`9` and `sudoku.grid.<grid>.box.1`–`9` (boxes row by row from the top left), and each game has one steps stream, `sudoku.game.<game>.steps`, which belongs to the game rather than its grid so that watchers keep it through a replay. They are RabbitMQ streams (`x-queue-type: stream`), because a stream is read in full by every consumer, so one queue per unit really is the topic, where a classic queue hands each message to only one of its consumers.
 

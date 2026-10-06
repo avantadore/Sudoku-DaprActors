@@ -1,6 +1,6 @@
 # The move history, not the step stream, is the event log
 
-Status: amended by ADR 0003 and ADR 0004. Propagation is no longer deterministic, so a replay that reaches a contradiction may rebuild a different contradicted grid. A grid is now a cache that is rebuilt by replay after it has been idle (ADR 0004).
+Status: amended by ADR 0003, ADR 0004 and ADR 0005. Propagation is no longer deterministic, so a replay that reaches a contradiction may rebuild a different contradicted grid. A grid was a cache rebuilt by replay after it had been idle (ADR 0004), until ADR 0005 dropped that: it now lives until a replay replaces it.
 
 ADR 0001 expected the stream of steps to become the event log. We record only moves instead, and rebuild a game by replaying them, because propagation is deterministic (single-threaded on the current-thread scheduler, no randomness, fixed subscription order): the same moves in the same order always produce the same steps and the same grid. Storing the full cascade would duplicate what the rules already compute and would go stale whenever the rules change.
 
