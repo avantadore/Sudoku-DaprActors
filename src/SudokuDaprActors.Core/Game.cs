@@ -1,45 +1,38 @@
-using RabbitMQ.Client;
-
 namespace SudokuDaprActors.Core;
 
 /// <summary>
-/// A session in which one 9×9 grid is filled in. Every game starts with all 81 cells empty. A game has its own
-/// connection to RabbitMQ and its own steps stream; its grid has its own unit streams (ADR 0004).
+/// One 9×9 grid being filled in, one move at a time. Every game starts with all 81 cells empty. A game talks to its
+/// grid only through <see cref="IGrid"/>, and its grids run wherever its <see cref="IGameGrids"/> puts them.
 /// </summary>
 public sealed class Game : IAsyncDisposable
 {
-    private readonly IConnection _connection;
-    private readonly IChannel _channel; // declares and deletes the steps stream
+    private readonly IGameGrids _grids;
     private readonly List<RecordedMove> _moves = [];
     private readonly List<StepWatcher> _watchers = [];
     private readonly SemaphoreSlim _turn = new(1, 1); // one move, replay, watcher change or suspension at a time
     private bool _disposed;
-    private volatile Grid? _grid;
+    private volatile IGrid? _grid;
     private volatile Suspended? _suspended;
 
-    private Game(Guid id, IConnection connection, IChannel channel, Grid grid)
+    private Game(Guid id, IGameGrids grids, IGrid grid)
     {
         Id = id;
-        _connection = connection;
-        _channel = channel;
-        _grid = grid;
-        grid.StepsStream = StepsStream;
+        _grids = grids;
+        MakeCurrent(grid);
     }
 
-    /// <summary>Starts a new game on its own connection from <paramref name="connections"/>.</summary>
-    public static async Task<Game> NewAsync(IConnectionFactory connections, CancellationToken cancellationToken = default)
+    /// <summary>Starts a new game, with grids of its own on <paramref name="backend"/>.</summary>
+    public static async Task<Game> NewAsync(IGridBackend backend, CancellationToken cancellationToken = default)
     {
         var id = Guid.NewGuid();
-        var connection = await connections.CreateConnectionAsync($"sudoku game {id}", cancellationToken);
+        var grids = await backend.OpenAsync(id, cancellationToken);
         try
         {
-            var channel = await connection.CreateChannelAsync(cancellationToken: cancellationToken);
-            await channel.DeclareStreamAsync(Topology.StepsStream(id));
-            return new Game(id, connection, channel, await Grid.StartAsync(connection));
+            return new Game(id, grids, await grids.StartAsync());
         }
         catch
         {
-            await connection.DisposeAsync();
+            await grids.DisposeAsync();
             throw;
         }
     }
@@ -60,10 +53,8 @@ public sealed class Game : IAsyncDisposable
     public Cell Cell(int row, int column) =>
         _grid?.Cell(row, column) ?? _suspended!.Cells.Single(cell => cell.Row == row && cell.Column == column);
 
-    /// <summary>Whether the grid has been put away to free its streams, to be rebuilt by replay on the next move.</summary>
+    /// <summary>Whether the grid has been put away to free what it runs on, to be rebuilt by replay on the next move.</summary>
     public bool IsSuspended => _grid is null;
-
-    private string StepsStream => Topology.StepsStream(Id);
 
     /// <summary>
     /// A fresh reader of everything that happens to the grid from now on: each move, followed by the steps of its
@@ -83,9 +74,9 @@ public sealed class Game : IAsyncDisposable
                 return StepWatcher.Stopped();
             }
 
-            var watcher = await StepWatcher.StartAsync(_connection, StepsStream, () => _grid?.StepRead(), StopWatchingAsync);
+            var watcher = new StepWatcher(StopWatchingAsync);
+            watcher.ReadFrom(await _grids.WatchAsync(watcher.Read));
             _watchers.Add(watcher);
-            CountWatchers();
             return watcher;
         }
         finally
@@ -153,7 +144,7 @@ public sealed class Game : IAsyncDisposable
     }
 
     /// <summary>
-    /// Puts the grid away, deleting its unit streams, while keeping the game: its state and cells can still be read,
+    /// Puts the grid away, freeing what it runs on, while keeping the game: its state and cells can still be read,
     /// and its next move first rebuilds the grid by replaying to the position. A grid in contradiction may come back
     /// as a different one (ADR 0003).
     /// </summary>
@@ -169,6 +160,7 @@ public sealed class Game : IAsyncDisposable
 
             _suspended = new Suspended(grid.State, [.. grid.Cells]);
             _grid = null;
+            _grids.MakeCurrent(null);
             await grid.DisposeAsync();
         }
         finally
@@ -178,7 +170,7 @@ public sealed class Game : IAsyncDisposable
     }
 
     /// <summary>
-    /// Waits for a running move, stops the grid's workers and every watcher, and deletes the game's streams. Steps
+    /// Waits for a running move, stops the grid and every watcher, and frees what the game holds on its grids. Steps
     /// already read can still be taken.
     /// </summary>
     public async ValueTask DisposeAsync()
@@ -203,9 +195,7 @@ public sealed class Game : IAsyncDisposable
                 await grid.DisposeAsync();
             }
 
-            await _channel.DeleteStreamAsync(StepsStream);
-            await _connection.CloseAsync();
-            await _connection.DisposeAsync();
+            await _grids.DisposeAsync();
         }
         finally
         {
@@ -217,9 +207,9 @@ public sealed class Game : IAsyncDisposable
     /// A grid on which the first <paramref name="position"/> moves have been replayed, publishing no steps. If one is
     /// ever not accepted, the grid would no longer match the history, so it fails before the grid is used.
     /// </summary>
-    private async Task<Grid> BuildAsync(int position)
+    private async Task<IGrid> BuildAsync(int position)
     {
-        var grid = await Grid.StartAsync(_connection);
+        var grid = await _grids.StartAsync();
         try
         {
             foreach (var move in _moves.Take(position))
@@ -241,20 +231,11 @@ public sealed class Game : IAsyncDisposable
         }
     }
 
-    private void MakeCurrent(Grid grid)
+    private void MakeCurrent(IGrid grid)
     {
-        grid.StepsStream = StepsStream;
-        grid.StepWatchers = _watchers.Count;
+        _grids.MakeCurrent(grid);
         _grid = grid;
         _suspended = null;
-    }
-
-    private void CountWatchers()
-    {
-        if (_grid is { } grid)
-        {
-            grid.StepWatchers = _watchers.Count;
-        }
     }
 
     private async ValueTask StopWatchingAsync(StepWatcher watcher)
@@ -262,11 +243,7 @@ public sealed class Game : IAsyncDisposable
         await _turn.WaitAsync();
         try
         {
-            if (_watchers.Remove(watcher))
-            {
-                CountWatchers();
-            }
-
+            _watchers.Remove(watcher);
             await watcher.StopAsync();
         }
         finally

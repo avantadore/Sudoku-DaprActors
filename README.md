@@ -38,6 +38,8 @@ aspire run
 
 The Aspire dashboard starts the RabbitMQ container and links to its management UI, the Api (Scalar UI at `/scalar`) and Web.
 
+A game talks to its grid only through `IGrid`, so the Api's `Grid` setting chooses what grids run on. `RabbitMQ`, the default, is the only one so far.
+
 ## Testing
 
 ```sh

@@ -8,8 +8,9 @@ namespace SudokuDaprActors.Core;
 /// <summary>
 /// The 81 cells of one game and the 27 units that propagate their constraints, talking on the grid's own 27 unit
 /// streams (ADR 0004). A replay gives a game a fresh grid and disposes the old one, which deletes its streams.
+/// Its game's <see cref="RabbitMqGameGrids"/> tells it where steps go and how many watchers read them.
 /// </summary>
-internal sealed class Grid : IAsyncDisposable
+internal sealed class RabbitMqGrid : IGrid
 {
     private readonly Guid _id = Guid.NewGuid();
     private readonly IConnection _connection;
@@ -19,7 +20,7 @@ internal sealed class Grid : IAsyncDisposable
     private readonly ConcurrentDictionary<string, TaskCompletionSource<MoveOutcome>> _replies = new();
     private Mailbox? _front; // where moves are sent from and their replies arrive
 
-    private Grid(IConnection connection)
+    private RabbitMqGrid(IConnection connection)
     {
         _connection = connection;
         for (var row = 1; row <= 9; row++)
@@ -41,9 +42,9 @@ internal sealed class Grid : IAsyncDisposable
     }
 
     /// <summary>Declares the grid's 27 unit streams and starts its 108 workers reading them.</summary>
-    public static async Task<Grid> StartAsync(IConnection connection)
+    public static async Task<RabbitMqGrid> StartAsync(IConnection connection)
     {
-        var grid = new Grid(connection);
+        var grid = new RabbitMqGrid(connection);
         try
         {
             await grid.StartAsync();

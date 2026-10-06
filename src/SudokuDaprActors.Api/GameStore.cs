@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using RabbitMQ.Client;
 using SudokuDaprActors.Core;
 
 namespace SudokuDaprActors.Api;
@@ -7,10 +6,10 @@ namespace SudokuDaprActors.Api;
 /// <summary>
 /// Holds games in memory for the lifetime of the process. A game makes one move at a time by itself, but a request
 /// also reads the grid it leaves behind, so the store hands a game out only while holding that game's semaphore:
-/// one request at a time, held across its awaits. A grid costs RabbitMQ streams and channels, so a game left idle
-/// has its grid suspended, to be rebuilt by replay on its next move (ADR 0004).
+/// one request at a time, held across its awaits. A grid costs what it runs on, such as RabbitMQ streams and
+/// channels, so a game left idle has its grid suspended, to be rebuilt by replay on its next move (ADR 0004).
 /// </summary>
-public sealed class GameStore(IConnectionFactory connections, TimeProvider time, TimeSpan idleAfter) : IAsyncDisposable
+public sealed class GameStore(IGridBackend grids, TimeProvider time, TimeSpan idleAfter) : IAsyncDisposable
 {
     /// <summary>How long a game may go unused before its grid is suspended, unless told otherwise.</summary>
     public static readonly TimeSpan DefaultIdleAfter = TimeSpan.FromMinutes(5);
@@ -20,7 +19,7 @@ public sealed class GameStore(IConnectionFactory connections, TimeProvider time,
     /// <summary>Starts a new game, running <paramref name="use"/> on it before any other request can reach it.</summary>
     public async Task<T> NewAsync<T>(Func<Guid, Game, T> use)
     {
-        var game = await Game.NewAsync(connections);
+        var game = await Game.NewAsync(grids);
         var result = use(game.Id, game);
         _games[game.Id] = new Entry(game, time.GetUtcNow());
         return result;
@@ -73,7 +72,7 @@ public sealed class GameStore(IConnectionFactory connections, TimeProvider time,
         }
     }
 
-    /// <summary>Disposes every game, which deletes their streams.</summary>
+    /// <summary>Disposes every game, which frees what their grids run on.</summary>
     public async ValueTask DisposeAsync()
     {
         foreach (var entry in _games.Values)

@@ -11,7 +11,7 @@ public class GameStoreTests : IAsyncLifetime
     private static CancellationToken Cancellation => TestContext.Current.CancellationToken;
 
     public async ValueTask InitializeAsync() =>
-        _store = new GameStore(await Broker.ConnectionsAsync(), _time, TimeSpan.FromMinutes(5));
+        _store = new GameStore(await Broker.GridsAsync(), _time, TimeSpan.FromMinutes(5));
 
     public ValueTask DisposeAsync() => _store.DisposeAsync();
 

@@ -27,5 +27,7 @@ internal static class Broker
 
     public static Task<string> ConnectionStringAsync() => ConnectionString.Value;
 
-    public static async Task<Game> NewGameAsync() => await Game.NewAsync(await ConnectionsAsync());
+    public static async Task<IGridBackend> GridsAsync() => new RabbitMqGridBackend(await ConnectionsAsync());
+
+    public static async Task<Game> NewGameAsync() => await Game.NewAsync(await GridsAsync());
 }
