@@ -69,19 +69,19 @@ internal sealed class Switchboard
     public void Fail(Exception exception) => _cascadeOver.TrySetException(exception);
 
     /// <summary>
-    /// Places a deduction by running <paramref name="fill"/>, unless the grid is in contradiction. Checked and placed
-    /// as one, so no deduction slips in once a contradiction has been decided. True if it was placed.
+    /// Places a deduction by running <paramref name="place"/>, unless the grid is in contradiction. Checked and placed
+    /// as one, so no deduction slips in once a contradiction has been decided. <paramref name="place"/> says whether
+    /// the cell took the deduction, and only then is it counted. True if it was placed.
     /// </summary>
-    public bool Deduce(Action fill)
+    public bool Deduce(Func<bool> place)
     {
         lock (_contradiction)
         {
-            if (_contradicted)
+            if (_contradicted || !place())
             {
                 return false;
             }
 
-            fill();
             _deductions++;
             return true;
         }

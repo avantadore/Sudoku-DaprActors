@@ -3,14 +3,13 @@ using RabbitMQ.Client;
 namespace SudokuDaprActors.Core;
 
 /// <summary>
-/// One cell, as a worker reading its row, column and box streams. It owns its candidates, so it decides whether a
-/// move is accepted, eliminates by itself when it hears that a peer was filled, detects its own naked single, and
-/// announces what happened to it on all three streams. It skips whatever else it hears: commands for other cells, and
-/// candidates its peers lost.
+/// One cell, as a worker reading its row, column and box streams. It routes what it hears to the cell's rules and
+/// carries out what they decide: it answers moves, publishes steps, and announces events on all three streams. It
+/// skips whatever else it hears: commands for other cells, its own events, and candidates its peers lost.
 /// </summary>
 internal sealed class CellWorker : IAsyncDisposable
 {
-    private readonly SortedSet<int> _candidates = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    private readonly CellRules _rules;
     private readonly Lock _state = new(); // the worker writes while the game may take a snapshot
     private readonly Switchboard _switchboard;
     private Mailbox? _mailbox;
@@ -18,21 +17,16 @@ internal sealed class CellWorker : IAsyncDisposable
 
     public CellWorker(int row, int column, Switchboard switchboard)
     {
-        Row = row;
-        Column = column;
+        _rules = new CellRules(row, column);
         _switchboard = switchboard;
     }
 
-    public int Row { get; }
+    public int Row => _rules.Row;
 
-    public int Column { get; }
+    public int Column => _rules.Column;
 
     /// <summary>The box this cell belongs to, 1–9 row by row from the top left.</summary>
     public int Box => Topology.BoxOf(Row, Column);
-
-    public int? Digit { get; private set; }
-
-    public PlacementSource? Source { get; private set; }
 
     /// <summary>Starts reading the cell's row, column and box streams, in that order.</summary>
     public async Task StartAsync(IConnection connection, string row, string column, string box)
@@ -51,7 +45,7 @@ internal sealed class CellWorker : IAsyncDisposable
         {
             lock (_state)
             {
-                return Digit is not null;
+                return _rules.Digit is not null;
             }
         }
     }
@@ -60,7 +54,7 @@ internal sealed class CellWorker : IAsyncDisposable
     {
         lock (_state)
         {
-            return new Cell(Row, Column, Digit, Source, [.. _candidates]);
+            return _rules.Snapshot();
         }
     }
 
@@ -72,7 +66,7 @@ internal sealed class CellWorker : IAsyncDisposable
     {
         Command.PlaceMove move when IsThis(move) => PlaceMoveAsync(move),
         Command.PlaceDeduction deduction when IsThis(deduction) => PlaceDeductionAsync(deduction.Digit),
-        Event.Filled filled when !IsThis(filled) => EliminateAsync(filled.Digit),
+        Event.Filled filled when !IsThis(filled) => CarryOutAsync(Apply(() => _rules.Eliminate(filled.Digit))),
         _ => Task.CompletedTask,
     };
 
@@ -81,115 +75,30 @@ internal sealed class CellWorker : IAsyncDisposable
     private async Task PlaceMoveAsync(Command.PlaceMove move)
     {
         var reply = move.ReplyTo ?? throw new InvalidOperationException($"{move} has no reply address.");
-        if (Digit == move.Digit)
-        {
-            await Mailbox.ReplyAsync(reply, new MoveOutcome.Unchanged());
-        }
-        else if (Digit is { } placed)
-        {
-            await Mailbox.ReplyAsync(reply, new MoveOutcome.Rejected($"Cell ({Row}, {Column}) already holds {placed}, and placements are final."));
-        }
-        else if (!_candidates.Contains(move.Digit))
-        {
-            await Mailbox.ReplyAsync(reply, new MoveOutcome.Rejected($"{move.Digit} is not a candidate for cell ({Row}, {Column})."));
-        }
-        else
-        {
-            await Mailbox.ReplyAsync(reply, new MoveOutcome.Accepted());
-            await AnnounceFilledAsync(move.Digit, PlacementSource.Move, Fill(move.Digit, PlacementSource.Move));
-        }
+        var (outcome, reaction) = Apply(() => _rules.Move(move.Digit));
+        await Mailbox.ReplyAsync(reply, outcome);
+        await CarryOutAsync(reaction);
     }
 
-    // A unit's view of its cells can lag, and so can this cell's: by the time a deduction arrives, the cascade may
-    // have filled the cell, removed the digit or reached a contradiction, after which nothing more is deduced.
+    // Checked and placed as one with the grid's contradiction flag, so no deduction slips in once a contradiction has
+    // been decided, and a stale one is not counted.
     private async Task PlaceDeductionAsync(int digit)
     {
-        if (Digit is not null || !_candidates.Contains(digit))
+        Reaction? reaction = null;
+        if (_switchboard.Deduce(() => (reaction = Apply(() => _rules.Deduce(digit))) is not null))
         {
-            return;
-        }
-
-        List<int> lost = [];
-        if (_switchboard.Deduce(() => lost = Fill(digit, PlacementSource.Deduction)))
-        {
-            await AnnounceFilledAsync(digit, PlacementSource.Deduction, lost);
+            await CarryOutAsync(reaction!);
         }
     }
 
-    /// <summary>Puts the digit in the cell, and returns the candidates the cell lost by it.</summary>
-    private List<int> Fill(int digit, PlacementSource source)
+    private T Apply<T>(Func<T> rule)
     {
         lock (_state)
         {
-            List<int> lost = [.. _candidates.Where(candidate => candidate != digit)];
-            Digit = digit;
-            Source = source;
-            _candidates.IntersectWith([digit]);
-            return lost;
+            return rule();
         }
     }
 
-    private async Task AnnounceFilledAsync(int digit, PlacementSource source, List<int> lost)
-    {
-        await Mailbox.PublishStepAsync(new Step.Placement(Row, Column, digit, source));
-
-        // Filled first, so a unit already knows the cell holds its digit when it hears which candidates it lost.
-        await AnnounceAsync(new Event.Filled(Row, Column, digit, source));
-        foreach (var candidate in lost)
-        {
-            await AnnounceAsync(new Event.CandidateLost(Row, Column, candidate));
-        }
-    }
-
-    private async Task EliminateAsync(int digit)
-    {
-        if (Digit == digit)
-        {
-            // A peer was filled with this cell's own digit. Only a deduction that raced the elimination ruling it
-            // out can do that, so the digit is now twice in a unit and this cell has no candidate left.
-            await ContradictAsync();
-            return;
-        }
-
-        int remaining;
-        lock (_state)
-        {
-            if (!_candidates.Remove(digit))
-            {
-                return; // already gone, e.g. eliminated by a peer that shares two units with this cell
-            }
-
-            remaining = _candidates.Count;
-        }
-
-        await Mailbox.PublishStepAsync(new Step.Elimination(Row, Column, digit));
-
-        if (Digit is null && remaining == 1)
-        {
-            // A naked single, sent to itself so that whatever it has already heard is handled first.
-            await Mailbox.SendAsync(_units[0], new Command.PlaceDeduction(Row, Column, _candidates.Min));
-        }
-        else if (Digit is null && remaining == 0)
-        {
-            await ContradictAsync();
-        }
-
-        await AnnounceAsync(new Event.CandidateLost(Row, Column, digit));
-    }
-
-    private async Task ContradictAsync()
-    {
-        if (_switchboard.Contradict())
-        {
-            await Mailbox.PublishStepAsync(new Step.Contradiction.NoCandidateForCell(Row, Column));
-        }
-    }
-
-    private async Task AnnounceAsync(Event @event)
-    {
-        foreach (var unit in _units)
-        {
-            await Mailbox.SendAsync(unit, @event);
-        }
-    }
+    // A naked single goes to the cell itself on its row stream, so that whatever it has already heard is handled first.
+    private Task CarryOutAsync(Reaction reaction) => Mailbox.CarryOutAsync(reaction, deductionsTo: _units[0], announceTo: _units);
 }

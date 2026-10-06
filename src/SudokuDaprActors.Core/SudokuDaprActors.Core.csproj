@@ -4,4 +4,8 @@
     <PackageReference Include="RabbitMQ.Client" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="SudokuDaprActors.Core.Tests" />
+  </ItemGroup>
+
 </Project>

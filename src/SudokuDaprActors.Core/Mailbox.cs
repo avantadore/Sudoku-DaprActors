@@ -76,6 +76,36 @@ internal sealed class Mailbox : IAsyncDisposable
         return PublishAsync(stream, step);
     }
 
+    /// <summary>
+    /// Carries out what a cell's or a unit's rules decided, in the order a <see cref="Reaction"/> lists it. Only the
+    /// grid's first contradiction is published.
+    /// </summary>
+    public async Task CarryOutAsync(Reaction reaction, string deductionsTo, IReadOnlyList<string> announceTo)
+    {
+        foreach (var step in reaction.Steps)
+        {
+            await PublishStepAsync(step);
+        }
+
+        if (reaction.Contradiction is { } contradiction && _switchboard.Contradict())
+        {
+            await PublishStepAsync(contradiction);
+        }
+
+        if (reaction.Deduction is { } deduction)
+        {
+            await SendAsync(deductionsTo, deduction);
+        }
+
+        foreach (var @event in reaction.Announcements)
+        {
+            foreach (var stream in announceTo)
+            {
+                await SendAsync(stream, @event);
+            }
+        }
+    }
+
     /// <summary>Answers a move. A reply is not counted as in flight: the move waits for it by itself.</summary>
     public Task ReplyAsync(ReplyAddress address, MoveOutcome outcome)
     {
