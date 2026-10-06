@@ -2,6 +2,8 @@
   <Folder Name="/src/">
     <Project Path="src/SudokuDaprActors.Api/SudokuDaprActors.Api.csproj" />
     <Project Path="src/SudokuDaprActors.AppHost/SudokuDaprActors.AppHost.csproj" />
+    <Project Path="src/SudokuDaprActors.Cells.Contracts/SudokuDaprActors.Cells.Contracts.csproj" />
+    <Project Path="src/SudokuDaprActors.Cells/SudokuDaprActors.Cells.csproj" />
     <Project Path="src/SudokuDaprActors.Core/SudokuDaprActors.Core.csproj" />
     <Project Path="src/SudokuDaprActors.ServiceDefaults/SudokuDaprActors.ServiceDefaults.csproj" />
     <Project Path="src/SudokuDaprActors.Web/SudokuDaprActors.Web.csproj" />
@@ -9,6 +11,7 @@
   <Folder Name="/tests/">
     <Project Path="tests/SudokuDaprActors.Api.Tests/SudokuDaprActors.Api.Tests.csproj" />
     <Project Path="tests/SudokuDaprActors.Core.Tests/SudokuDaprActors.Core.Tests.csproj" />
+    <Project Path="tests/SudokuDaprActors.EndToEnd.Tests/SudokuDaprActors.EndToEnd.Tests.csproj" />
     <Project Path="tests/SudokuDaprActors.Web.Tests/SudokuDaprActors.Web.Tests.csproj" />
   </Folder>
 </Solution>

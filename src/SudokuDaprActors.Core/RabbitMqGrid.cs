@@ -98,8 +98,7 @@ internal sealed class RabbitMqGrid : IGrid
 
         if (_switchboard.IsContradicted)
         {
-            return (new MoveOutcome.Rejected(
-                "The game is in contradiction, so no more moves can be made. Replay to an earlier position to continue, or start a new game."), 0);
+            return (MoveOutcome.Rejected.InContradiction, 0);
         }
 
         _switchboard.StartCascade();

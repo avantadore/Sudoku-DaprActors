@@ -19,26 +19,29 @@ Open the RabbitMQ management UI from the Aspire dashboard to watch them during a
 
 | Project | Purpose |
 | --- | --- |
-| `src/SudokuDaprActors.AppHost` | Aspire AppHost: orchestrates RabbitMQ (with the management plugin), Api and Web |
+| `src/SudokuDaprActors.AppHost` | Aspire AppHost: orchestrates RabbitMQ (with the management plugin), the Dapr placement service, the Cells service and the Api with their Dapr sidecars, and Web |
 | `src/SudokuDaprActors.ServiceDefaults` | Aspire service defaults (telemetry, health, service discovery, resilience) |
-| `src/SudokuDaprActors.Core` | The domain: games, grids, and constraint propagation by cells and unit watchers on RabbitMQ streams |
+| `src/SudokuDaprActors.Core` | The domain: games, grids, the rules of cells and units, and constraint propagation by cells and unit watchers on RabbitMQ streams |
+| `src/SudokuDaprActors.Cells` | The Cells service: cell and grid Dapr actors, and the subscribers of the unit topics (ADR 0005) |
+| `src/SudokuDaprActors.Cells.Contracts` | The actor interfaces and messages the Api and the Cells service share |
 | `src/SudokuDaprActors.Api` | REST API (Minimal APIs, OpenAPI, Scalar) |
 | `src/SudokuDaprActors.Web` | Blazor Web App (Interactive Server), talks to the Api |
 | `tests/SudokuDaprActors.Core.Tests` | xUnit v3 tests for Core, against a real broker |
 | `tests/SudokuDaprActors.Api.Tests` | xUnit v3 tests for the Api, over HTTP and on its game store, against a real broker |
 | `tests/SudokuDaprActors.Web.Tests` | xUnit v3 tests for the Web's API client and display mapping, and that its enums match Core's |
+| `tests/SudokuDaprActors.EndToEnd.Tests` | xUnit v3 tests of the whole app on the Dapr grid, started with Aspire.Hosting.Testing |
 
 ## Running
 
-Requires the .NET 10 SDK, the Aspire CLI (`dotnet tool install -g Aspire.Cli`) and Docker (Engine API 1.44 or later, which is Docker Desktop 4.27+).
+Requires the .NET 10 SDK, the Aspire CLI (`dotnet tool install -g Aspire.Cli`), Docker (Engine API 1.44 or later, which is Docker Desktop 4.27+) and the [Dapr CLI](https://docs.dapr.io/getting-started/install-dapr-cli/), initialised with `dapr init` or `dapr init --slim`. Either is enough, because the app runs its own placement service.
 
 ```sh
 aspire run
 ```
 
-The Aspire dashboard starts the RabbitMQ container and links to its management UI, the Api (Scalar UI at `/scalar`) and Web.
+The Aspire dashboard starts the RabbitMQ and placement containers, the Cells service and the Api with their Dapr sidecars, and links to the RabbitMQ management UI, the Api (Scalar UI at `/scalar`) and Web.
 
-A game talks to its grid only through `IGrid`, so the Api's `Grid` setting chooses what grids run on. `RabbitMQ`, the default, is the only one so far.
+A game talks to its grid only through `IGrid`, so the Api's `Grid` setting chooses what grids run on: `RabbitMQ`, the default, or `Dapr`, which the AppHost sets.
 
 ## Testing
 
@@ -46,4 +49,4 @@ A game talks to its grid only through `IGrid`, so the Api's `Grid` setting choos
 dotnet test
 ```
 
-The Core and Api tests start a RabbitMQ container with Testcontainers. To use a broker that is already running instead, set `SUDOKU_TEST_RABBITMQ` to its connection string, for example `amqp://guest:guest@localhost:5672/`.
+The end-to-end tests start the whole app, as `aspire run` does, so they need the Dapr CLI as well as Docker. The Core and Api tests start a RabbitMQ container with Testcontainers. To use a broker that is already running instead, set `SUDOKU_TEST_RABBITMQ` to its connection string, for example `amqp://guest:guest@localhost:5672/`.

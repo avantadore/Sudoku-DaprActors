@@ -1,0 +1,18 @@
+# Every grid talks on the same 27 unit topics, through Dapr pub/sub on RabbitMQ (ADR 0005). Messages may overtake
+# each other, which the rules tolerate.
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub
+spec:
+  type: pubsub.rabbitmq
+  version: v1
+  metadata:
+    - name: connectionString
+      secretKeyRef:
+        name: SUDOKU_MESSAGING
+        key: SUDOKU_MESSAGING
+    - name: concurrencyMode
+      value: "parallel"
+auth:
+  secretStore: environment

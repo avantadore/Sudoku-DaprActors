@@ -1,0 +1,11 @@
+# Actor state lives only as long as the sidecar does, as games do in the Api's memory (ADR 0005).
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: actorstate
+spec:
+  type: state.in-memory
+  version: v1
+  metadata:
+    - name: actorStateStore
+      value: "true"

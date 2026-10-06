@@ -8,10 +8,12 @@
 
   <ItemGroup>
     <PackageReference Include="Aspire.Hosting.RabbitMQ" />
+    <PackageReference Include="CommunityToolkit.Aspire.Hosting.Dapr" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SudokuDaprActors.Api\SudokuDaprActors.Api.csproj" />
+    <ProjectReference Include="..\SudokuDaprActors.Cells\SudokuDaprActors.Cells.csproj" />
     <ProjectReference Include="..\SudokuDaprActors.Web\SudokuDaprActors.Web.csproj" />
   </ItemGroup>
 

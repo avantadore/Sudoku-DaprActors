@@ -1,15 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
   <ItemGroup>
-    <PackageReference Include="Aspire.RabbitMQ.Client" />
+    <PackageReference Include="Dapr.Actors.AspNetCore" />
     <PackageReference Include="Dapr.AspNetCore" />
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
-    <PackageReference Include="Scalar.AspNetCore" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SudokuDaprActors.Cells.Contracts\SudokuDaprActors.Cells.Contracts.csproj" />
-    <ProjectReference Include="..\SudokuDaprActors.Core\SudokuDaprActors.Core.csproj" />
     <ProjectReference Include="..\SudokuDaprActors.ServiceDefaults\SudokuDaprActors.ServiceDefaults.csproj" />
   </ItemGroup>
 

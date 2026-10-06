@@ -24,6 +24,14 @@ public class GridConfigurationTests
     }
 
     [Fact]
+    public async Task Configuring_Dapr_runs_the_grids_on_Dapr_actors()
+    {
+        await using var factory = WithGrid("Dapr");
+
+        Assert.IsType<DaprGridBackend>(factory.Services.GetRequiredService<IGridBackend>());
+    }
+
+    [Fact]
     public async Task An_unknown_grid_stops_the_Api_from_starting()
     {
         await using var factory = WithGrid("CarrierPigeons");

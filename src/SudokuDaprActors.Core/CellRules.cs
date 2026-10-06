@@ -14,6 +14,14 @@ internal sealed class CellRules
         Column = column;
     }
 
+    /// <summary>The cell as <paramref name="snapshot"/> left it, as when its state was saved and is read back.</summary>
+    public static CellRules From(Cell snapshot)
+    {
+        var rules = new CellRules(snapshot.Row, snapshot.Column) { Digit = snapshot.Digit, Source = snapshot.Source };
+        rules._candidates.IntersectWith(snapshot.Candidates);
+        return rules;
+    }
+
     public int Row { get; }
 
     public int Column { get; }

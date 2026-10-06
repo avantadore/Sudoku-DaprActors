@@ -11,5 +11,10 @@ public abstract record MoveOutcome
 
     public sealed record Unchanged : MoveOutcome;
 
-    public sealed record Rejected(string Reason) : MoveOutcome;
+    public sealed record Rejected(string Reason) : MoveOutcome
+    {
+        /// <summary>Every move on a grid in contradiction, whichever cell it is for.</summary>
+        public static Rejected InContradiction { get; } = new(
+            "The game is in contradiction, so no more moves can be made. Replay to an earlier position to continue, or start a new game.");
+    }
 }

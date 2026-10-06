@@ -175,6 +175,35 @@ public class CellRulesTests
         Assert.Null(_cell.Digit);
     }
 
+    [Fact]
+    public void A_cell_restored_from_its_snapshot_keeps_its_candidates()
+    {
+        // As a cell's actor does when it is activated again from its saved state.
+        _cell.Eliminate(7);
+
+        var restored = CellRules.From(_cell.Snapshot());
+
+        Assert.Equal(_cell.Snapshot(), restored.Snapshot(), CellComparer);
+        Assert.Equal(new MoveOutcome.Rejected("7 is not a candidate for cell (2, 3)."), restored.Move(7).Outcome);
+    }
+
+    [Fact]
+    public void A_cell_restored_from_its_snapshot_keeps_its_digit()
+    {
+        _cell.Move(5);
+
+        var restored = CellRules.From(_cell.Snapshot());
+
+        Assert.Equal(_cell.Snapshot(), restored.Snapshot(), CellComparer);
+        Assert.IsType<MoveOutcome.Unchanged>(restored.Move(5).Outcome);
+    }
+
+    /// <summary>Cells are equal by value, candidates included.</summary>
+    private static readonly IEqualityComparer<Cell> CellComparer = EqualityComparer<Cell>.Create(
+        (x, y) => x == y || (x is not null && y is not null
+            && (x.Row, x.Column, x.Digit, x.Source) == (y.Row, y.Column, y.Digit, y.Source)
+            && x.Candidates.SequenceEqual(y.Candidates)));
+
     private void EliminateAllBut(params int[] kept)
     {
         foreach (var digit in Enumerable.Range(1, 9).Except(kept))

@@ -1,0 +1,8 @@
+# The sidecar's environment, where the AppHost puts the broker's connection string, which changes on every run.
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: environment
+spec:
+  type: secretstores.local.env
+  version: v1

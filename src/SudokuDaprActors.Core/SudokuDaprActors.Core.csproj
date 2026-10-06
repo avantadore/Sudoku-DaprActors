@@ -6,6 +6,8 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="SudokuDaprActors.Core.Tests" />
+    <!-- The Cells service hosts the cell rules in Dapr actors (ADR 0005). -->
+    <InternalsVisibleTo Include="SudokuDaprActors.Cells" />
   </ItemGroup>
 
 </Project>
