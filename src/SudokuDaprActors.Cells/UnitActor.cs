@@ -7,8 +7,9 @@ namespace SudokuDaprActors.Cells;
 
 /// <summary>
 /// One row, column or box, as a Dapr actor (ADR 0005). It hosts the unit's rules, keeps them in the actor state
-/// store, and carries out what they decide: it sends each hidden single on the unit's topic, reporting the delivery
-/// to its grid's actor first, and claims any contradiction there.
+/// store, and carries out what they decide: it claims any contradiction at its grid's actor, publishing it as a step if
+/// it is the grid's first, and sends each hidden single on the unit's topic, reporting every delivery to that actor
+/// first.
 /// </summary>
 internal sealed class UnitActor(ActorHost host, DaprClient dapr) : Actor(host), IUnitActor
 {
@@ -37,14 +38,21 @@ internal sealed class UnitActor(ActorHost host, DaprClient dapr) : Actor(host), 
         // Saved even when nothing is to be done: hearing Filled changes what the unit knows.
         await StateManager.SetStateAsync(State, _rules.Snapshot());
 
-        if (reaction.Contradiction is not null)
+        // Only the grid's first contradiction is published as a step.
+        var contradiction = reaction.Contradiction is { } found && await Grid.ContradictAsync() ? found : null;
+        var deliveries = (contradiction is null ? 0 : 1) + (reaction.Deduction is null ? 0 : 1);
+        if (deliveries > 0)
         {
-            await Grid.ContradictAsync();
+            await Grid.ReportAsync(deliveries);
+        }
+
+        if (contradiction is not null)
+        {
+            await dapr.PublishEventAsync(Topics.InOrder, Topics.Steps, StepMessage.From(_grid, contradiction));
         }
 
         if (reaction.Deduction is { } deduction)
         {
-            await Grid.ReportAsync(1);
             await dapr.PublishEventAsync(
                 Topics.PubSub, _unit.Topic,
                 new UnitMessage(_grid, UnitMessage.Kinds.PlaceDeduction, deduction.Row, deduction.Column, deduction.Digit));

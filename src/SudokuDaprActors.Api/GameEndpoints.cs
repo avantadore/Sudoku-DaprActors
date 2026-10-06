@@ -1,4 +1,10 @@
+using System.Net.ServerSentEvents;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Http.Json;
+using Microsoft.Extensions.Options;
 using SudokuDaprActors.Core;
 
 namespace SudokuDaprActors.Api;
@@ -14,6 +20,7 @@ public static class GameEndpoints
         games.MapPut("/{id:guid}/cells/{row:int}/{column:int}", MakeMove);
         games.MapPut("/{id:guid}/position", SetPosition);
         games.MapGet("/{id:guid}/cells/{row:int}/{column:int}/candidates", GetCandidates);
+        games.MapGet("/{id:guid}/steps", WatchSteps);
 
         return app;
     }
@@ -94,6 +101,57 @@ public static class GameEndpoints
         return await store.TryUseAsync(id, game => Task.FromResult(game.Cell(row, column).Candidates)) is (true, var candidates)
             ? TypedResults.Ok(candidates)
             : TypedResults.NotFound();
+    }
+
+    /// <summary>
+    /// Streams the game's steps from now on as Server-Sent Events: a <c>step</c> event per step, and a
+    /// <c>move-complete</c> event after the last step of each accepted move. The headers are sent at once, so a client
+    /// that has them reads every step of its next move. Ends when the client disconnects or the game is disposed.
+    /// </summary>
+    private static async Task<Results<EmptyHttpResult, NotFound>> WatchSteps(
+        Guid id, GameStore store, HttpContext context, IOptions<JsonOptions> json)
+    {
+        if (await store.TryUseAsync(id, game => game.WatchStepsAsync()) is not (true, var watcher))
+        {
+            return TypedResults.NotFound();
+        }
+
+        await using (watcher)
+        {
+            var response = context.Response;
+            response.ContentType = "text/event-stream";
+            response.Headers.CacheControl = "no-cache";
+            context.Features.GetRequiredFeature<IHttpResponseBodyFeature>().DisableBuffering();
+            await response.Body.FlushAsync(context.RequestAborted);
+
+            try
+            {
+                // The end of a move's steps is an event with no data.
+                await SseFormatter.WriteAsync(EventsOf(watcher, context.RequestAborted), response.Body, (step, buffer) =>
+                {
+                    if (step.Data is { } data)
+                    {
+                        using var writer = new Utf8JsonWriter(buffer);
+                        JsonSerializer.Serialize(writer, StepResponse.From(data), json.Value.SerializerOptions);
+                    }
+                }, context.RequestAborted);
+            }
+            catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+            {
+                // The client stopped watching.
+            }
+        }
+
+        return TypedResults.Empty;
+    }
+
+    private static async IAsyncEnumerable<SseItem<Step?>> EventsOf(
+        StepWatcher watcher, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        await foreach (var step in watcher.ReadStepsAndMoveEndsAsync(cancellationToken))
+        {
+            yield return step is null ? new SseItem<Step?>(null, "move-complete") : new SseItem<Step?>(step, "step");
+        }
     }
 
     /// <summary>Rows, columns and digits are all 1–9.</summary>

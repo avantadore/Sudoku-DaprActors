@@ -7,8 +7,9 @@ namespace SudokuDaprActors.Cells;
 
 /// <summary>
 /// One cell, as a Dapr actor (ADR 0005). It hosts the cell's rules, keeps them in the actor state store, and carries
-/// out what they decide: it announces its events on the cell's row, column and box topics, reporting the deliveries
-/// to its grid's actor first, and claims any contradiction there. It asks that actor before placing a deduction.
+/// out what they decide: it publishes its steps, claims any contradiction at its grid's actor, publishing it too if it
+/// is the grid's first, and announces its events on the cell's row, column and box topics, reporting every delivery to
+/// that actor first. It asks that actor before placing a deduction.
 /// </summary>
 internal sealed class CellActor(ActorHost host, DaprClient dapr) : Actor(host), ICellActor
 {
@@ -63,7 +64,8 @@ internal sealed class CellActor(ActorHost host, DaprClient dapr) : Actor(host), 
     private async Task<Reaction?> TryDeduceAsync(int digit) =>
         _rules.CanDeduce(digit) && await Grid.DeduceAsync() ? _rules.Deduce(digit) : null;
 
-    // Steps come with their own ticket, so only the contradiction and the events are carried out for now.
+    // Publishes the steps, then the contradiction if it is the grid's first, then announces the events. A step is
+    // queued before the publish returns, so whatever the events cause reaches the watchers after it.
     private async Task CarryOutAsync(params Reaction?[] reactions)
     {
         List<Reaction> changes = [.. reactions.OfType<Reaction>().Where(reaction => reaction != Reaction.None)];
@@ -74,19 +76,27 @@ internal sealed class CellActor(ActorHost host, DaprClient dapr) : Actor(host), 
 
         await StateManager.SetStateAsync(State, _rules.Snapshot());
 
-        if (changes.Any(reaction => reaction.Contradiction is not null))
+        List<Step> steps = [.. changes.SelectMany(reaction => reaction.Steps)];
+        if (changes.Select(reaction => reaction.Contradiction).OfType<Step.Contradiction>().FirstOrDefault() is { } contradiction
+            && await Grid.ContradictAsync())
         {
-            await Grid.ContradictAsync();
+            steps.Add(contradiction);
         }
 
         List<UnitMessage> messages = [.. changes.SelectMany(reaction => reaction.Announcements).Select(ToMessage)];
-        if (messages.Count == 0)
+        var units = Unit.Of(_rules.Row, _rules.Column);
+        var deliveries = steps.Count + messages.Count * units.Count;
+        if (deliveries == 0)
         {
             return;
         }
 
-        var units = Unit.Of(_rules.Row, _rules.Column);
-        await Grid.ReportAsync(messages.Count * units.Count);
+        await Grid.ReportAsync(deliveries);
+        foreach (var step in steps)
+        {
+            await dapr.PublishEventAsync(Topics.InOrder, Topics.Steps, StepMessage.From(_grid, step));
+        }
+
         foreach (var message in messages)
         {
             foreach (var unit in units)

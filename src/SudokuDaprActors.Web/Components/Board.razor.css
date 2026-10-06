@@ -58,6 +58,11 @@
     background: #dde8f8;
 }
 
+/* The cell the cascade just changed, while it is shown as it runs. */
+.cell.changed {
+    background: #fff3c4;
+}
+
 .picker button {
     border: none;
     background: none;

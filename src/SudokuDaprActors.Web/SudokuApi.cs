@@ -1,5 +1,7 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Net.ServerSentEvents;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Mvc;
@@ -41,6 +43,43 @@ public sealed class SudokuApi(HttpClient http)
         return await ReadGridAsync(response, cancellationToken);
     }
 
+    /// <summary>
+    /// Starts watching the game's steps, and returns once it watches, so every step of the next move is read: each
+    /// step, and null after the last step of each move. Ends when the game does, or when cancelled.
+    /// </summary>
+    public async Task<IAsyncEnumerable<GridStep?>> WatchStepsAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        var response = await http.GetAsync($"/games/{id}/steps", HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+        try
+        {
+            response.EnsureSuccessStatusCode();
+            return ReadStepsAsync(response, await response.Content.ReadAsStreamAsync(cancellationToken), cancellationToken);
+        }
+        catch
+        {
+            response.Dispose();
+            throw;
+        }
+    }
+
+    private static async IAsyncEnumerable<GridStep?> ReadStepsAsync(
+        HttpResponseMessage response, Stream body, [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        using (response)
+        {
+            await foreach (var item in SseParser.Create(body).EnumerateAsync(cancellationToken))
+            {
+                yield return item.EventType switch
+                {
+                    "step" => JsonSerializer.Deserialize<GridStep>(item.Data, Json)
+                        ?? throw new JsonException("The API sent a step with no data."),
+                    "move-complete" => null,
+                    var other => throw new JsonException($"The API sent an event of unknown type '{other}'."),
+                };
+            }
+        }
+    }
+
     private static async Task<Grid> ReadGridAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {
         response.EnsureSuccessStatusCode();
@@ -56,6 +95,34 @@ public sealed record GridCell(int Row, int Column, int? Digit, PlacementSource? 
 
 /// <summary>A move in the game's move history, with how many deductions its cascade made.</summary>
 public sealed record GridMove(int Row, int Column, int Digit, int Deductions);
+
+/// <summary>
+/// One step of a move's cascade: a placement or an elimination in a cell, or a contradiction, either in a cell with no
+/// candidates left or in a unit with no cell left for a digit. Only the fields of its kind are set.
+/// </summary>
+public sealed record GridStep(
+    StepKind Kind, int? Row, int? Column, int? Digit, PlacementSource? Source, UnitKind? Unit, int? UnitNumber)
+{
+    /// <summary>The cell the step changed, if it is about one.</summary>
+    public (int Row, int Column)? Cell => Row is { } row && Column is { } column ? (row, column) : null;
+}
+
+/// <summary>Named after the kinds of Core's step, which the Web project cannot reference.</summary>
+public enum StepKind
+{
+    Placement,
+    Elimination,
+    NoCandidateForCell,
+    NoCellForDigit,
+}
+
+/// <summary>Mirrors the Core enum of the same name, which the Web project cannot reference.</summary>
+public enum UnitKind
+{
+    Row,
+    Column,
+    Box,
+}
 
 /// <summary>Mirrors the Core enum of the same name, which the Web project cannot reference.</summary>
 public enum GameState

@@ -27,6 +27,14 @@ internal static class GameApi
         return await ReadJsonAsync(response);
     }
 
+    /// <summary>Replays the game to <paramref name="position"/>, which the test expects to succeed.</summary>
+    public static async Task<JsonElement> ReplayAsync(this HttpClient api, string id, int position)
+    {
+        var response = await api.PutAsJsonAsync($"/games/{id}/position", new { position }, Cancellation);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        return await ReadJsonAsync(response);
+    }
+
     public static async Task<JsonElement> GetGameAsync(this HttpClient api, string id) =>
         await ReadJsonAsync(await api.GetAsync($"/games/{id}", Cancellation));
 

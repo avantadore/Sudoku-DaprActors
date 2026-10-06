@@ -43,6 +43,8 @@ The Aspire dashboard starts the RabbitMQ and placement containers, the Cells ser
 
 A game talks to its grid only through `IGrid`, so the Api's `Grid` setting chooses what grids run on: `RabbitMQ`, the default, or `Dapr`, which the AppHost sets.
 
+`GET /games/{id}/steps` streams a game's steps as Server-Sent Events from the moment it is opened: a `step` event for each placement, elimination or contradiction, and a `move-complete` event after the last step of each move. Web reads it to show each cascade as it runs.
+
 ## Testing
 
 ```sh

@@ -7,29 +7,59 @@ namespace SudokuDaprActors.Api;
 
 /// <summary>
 /// Grids whose cells are Dapr actors in the Cells service, behind unit subscribers (ADR 0005). The Api only calls
-/// the actors and hears when a cascade is over.
+/// the actors, hears when a cascade is over, and hands the steps of each game's current grid to its watchers.
 /// </summary>
-public sealed class DaprGridBackend(IActorProxyFactory actors, Cascades cascades) : IGridBackend
+public sealed class DaprGridBackend(IActorProxyFactory actors, Cascades cascades, Steps steps) : IGridBackend
 {
     public Task<IGameGrids> OpenAsync(Guid game, CancellationToken cancellationToken = default) =>
-        Task.FromResult<IGameGrids>(new DaprGameGrids(actors, cascades));
+        Task.FromResult<IGameGrids>(new DaprGameGrids(actors, cascades, steps));
 
-    /// <summary>One game's grids. Steps come with their own ticket, so for now no watcher reads any.</summary>
-    private sealed class DaprGameGrids(IActorProxyFactory actors, Cascades cascades) : IGameGrids
+    /// <summary>
+    /// One game's grids. It follows the steps of its current grid only, and hands each to every watcher. Watchers and
+    /// the current grid change only between moves, while no step is on its way unless a cascade failed, which is a bug
+    /// that leaves the grid taking no more moves. A step may still be handed on meanwhile, so the readers are swapped
+    /// whole.
+    /// </summary>
+    private sealed class DaprGameGrids(IActorProxyFactory actors, Cascades cascades, Steps steps) : IGameGrids
     {
+        private volatile IReadOnlyList<Action<Step>> _readers = [];
+        private IDisposable? _following;
+
         public Task<IGrid> StartAsync() => Task.FromResult<IGrid>(new DaprGrid(Guid.NewGuid(), actors, cascades));
 
         public void MakeCurrent(IGrid? grid)
         {
+            _following?.Dispose();
+            _following = grid is DaprGrid current ? steps.Follow(current.Id, Read) : null;
         }
 
-        public Task<IAsyncDisposable> WatchAsync(Action<Step> read) => Task.FromResult<IAsyncDisposable>(new NoReader());
-
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
-
-        private sealed class NoReader : IAsyncDisposable
+        public Task<IAsyncDisposable> WatchAsync(Action<Step> read)
         {
-            public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+            _readers = [.. _readers, read];
+            return Task.FromResult<IAsyncDisposable>(new Reader(() => _readers = [.. _readers.Where(reader => reader != read)]));
+        }
+
+        public ValueTask DisposeAsync()
+        {
+            MakeCurrent(null);
+            return ValueTask.CompletedTask;
+        }
+
+        private void Read(Step step)
+        {
+            foreach (var reader in _readers)
+            {
+                reader(step);
+            }
+        }
+
+        private sealed class Reader(Action stop) : IAsyncDisposable
+        {
+            public ValueTask DisposeAsync()
+            {
+                stop();
+                return ValueTask.CompletedTask;
+            }
         }
     }
 }
@@ -52,6 +82,9 @@ internal sealed class DaprGrid(Guid id, IActorProxyFactory actors, Cascades casc
     // A cascade that failed or never ended leaves the grid actor's count wrong, and its CascadeOver could still arrive
     // during a later move, so the grid takes no more moves.
     private Exception? _broken;
+
+    /// <summary>The grid's id, which every message about it carries.</summary>
+    public Guid Id => id;
 
     public GameState State =>
         _contradicted ? GameState.Contradicted

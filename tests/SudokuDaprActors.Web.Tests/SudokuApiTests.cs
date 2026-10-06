@@ -59,6 +59,41 @@ public class SudokuApiTests
         await Assert.ThrowsAsync<JsonException>(() => api.NewGameAsync(Cancellation));
     }
 
+    [Fact]
+    public async Task Watching_steps_reads_each_step_and_the_end_of_each_moves_steps()
+    {
+        var handler = new StubHandler(
+            """
+            event: step
+            data: {"kind":"Placement","row":2,"column":3,"digit":8,"source":"Move","unit":null,"unitNumber":null}
+
+            event: step
+            data: {"kind":"NoCellForDigit","row":null,"column":null,"digit":9,"source":null,"unit":"Box","unitNumber":3}
+
+            event: move-complete
+            data:
+
+
+            """, "text/event-stream");
+        var api = new SudokuApi(new HttpClient(handler) { BaseAddress = new Uri("http://api") });
+        var id = Guid.NewGuid();
+
+        List<GridStep?> read = [];
+        await foreach (var step in await api.WatchStepsAsync(id, Cancellation))
+        {
+            read.Add(step);
+        }
+
+        Assert.Equal($"/games/{id}/steps", handler.Request?.RequestUri?.AbsolutePath);
+        Assert.Equal(
+            [
+                new GridStep(StepKind.Placement, 2, 3, 8, PlacementSource.Move, null, null),
+                new GridStep(StepKind.NoCellForDigit, null, null, 9, null, UnitKind.Box, 3),
+                null,
+            ],
+            read);
+    }
+
     /// <summary>
     /// A grid of two cells: one filled from <paramref name="source"/> (raw JSON), one empty. It is at position 1 of
     /// two moves, so the second move is kept but not applied.
@@ -83,8 +118,8 @@ public class SudokuApiTests
     private static SudokuApi ApiReturning(string json) =>
         new(new HttpClient(new StubHandler(json)) { BaseAddress = new Uri("http://api") });
 
-    /// <summary>Answers every request with <paramref name="json"/>, and remembers the last request and its body.</summary>
-    private sealed class StubHandler(string json) : HttpMessageHandler
+    /// <summary>Answers every request with <paramref name="body"/>, and remembers the last request and its body.</summary>
+    private sealed class StubHandler(string body, string mediaType = "application/json") : HttpMessageHandler
     {
         public HttpRequestMessage? Request { get; private set; }
 
@@ -96,7 +131,7 @@ public class SudokuApiTests
             Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
             return new HttpResponseMessage(HttpStatusCode.Created)
             {
-                Content = new StringContent(json, Encoding.UTF8, "application/json"),
+                Content = new StringContent(body, Encoding.UTF8, mediaType),
             };
         }
     }

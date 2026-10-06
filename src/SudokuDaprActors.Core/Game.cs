@@ -106,6 +106,12 @@ public sealed class Game : IAsyncDisposable
                 _moves.RemoveRange(Position, _moves.Count - Position);
                 _moves.Add(new RecordedMove(row, column, digit, deductions));
                 Position = _moves.Count;
+
+                // Every watcher has been handed every step of the move by now, so this comes after them.
+                foreach (var watcher in _watchers)
+                {
+                    watcher.MoveCompleted();
+                }
             }
 
             return outcome;

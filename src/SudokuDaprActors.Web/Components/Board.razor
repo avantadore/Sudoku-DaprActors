@@ -46,6 +46,10 @@
     [Parameter]
     public bool Busy { get; set; }
 
+    /// <summary>The cell the step shown last changed, while a cascade is shown as it runs.</summary>
+    [Parameter]
+    public (int Row, int Column)? Changed { get; set; }
+
     /// <summary>Raised when the player picks one of an empty cell's candidates.</summary>
     [Parameter]
     public EventCallback<Pick> OnPick { get; set; }
@@ -69,6 +73,7 @@
         "cell"
         + (cell.Digit is null ? " empty" : "")
         + (IsSelected(cell) ? " selected" : "")
+        + (Changed == (cell.Row, cell.Column) ? " changed" : "")
         + (cell.Column % 3 == 0 && cell.Column < 9 ? " box-right" : "")
         + (cell.Row % 3 == 0 && cell.Row < 9 ? " box-bottom" : "");
 }

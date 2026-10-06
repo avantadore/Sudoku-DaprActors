@@ -1,4 +1,5 @@
 @page "/"
+@implements IDisposable
 @inject SudokuApi Api
 
 <PageTitle>Sudoku</PageTitle>
@@ -22,24 +23,53 @@
 {
     <div class="play">
         @* Keyed by game and replay, so a new game or a replay starts with a fresh board and nothing selected. *@
-        <Board @key="(_grid.Id, _replays)" Grid="_grid" Busy="_busy" OnPick="Place" />
+        <Board @key="(_grid.Id, _replays)" Grid="_grid" Busy="_busy" Changed="_changed" OnPick="Place" />
         <MoveHistory Grid="_grid" Busy="_busy" OnReplay="Replay" />
     </div>
 }
 
 @code {
+    /// <summary>How long each step of a cascade is shown before the next, so the cascade can be seen as it runs.</summary>
+    private static readonly TimeSpan StepPause = TimeSpan.FromMilliseconds(15);
+
+    /// <summary>How long a move waits for its steps to be shown, in case the stream of steps has broken.</summary>
+    private static readonly TimeSpan ShowTimeout = TimeSpan.FromSeconds(30);
+
     private Grid? _grid;
     private string? _error;
     private bool _busy;
     private int _replays;
+    private CancellationTokenSource? _watching;
+    private TaskCompletionSource? _shown;
 
-    private Task NewGame() => Call("Could not start a new game", async () => _grid = await Api.NewGameAsync());
+    // The placement of the move this page made, and whether it has been read. Only the end of its steps completes
+    // _shown: another page on the same game ends its own moves' steps too.
+    private GridStep? _awaited;
+    private bool _awaitedRead;
+    private (int Row, int Column)? _changed;
+
+    private Task NewGame() => Call("Could not start a new game", async () =>
+    {
+        var grid = await Api.NewGameAsync();
+        await WatchAsync(grid.Id);
+        _grid = grid;
+    });
 
     private Task Place(Board.Pick pick) => Call("Could not make the move", async () =>
     {
+        var shown = _shown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        _awaited = new GridStep(StepKind.Placement, pick.Row, pick.Column, pick.Digit, PlacementSource.Move, null, null);
+        _awaitedRead = false;
         switch (await Api.MoveAsync(_grid!.Id, pick.Row, pick.Column, pick.Digit))
         {
+            // An accepted move advances the position, and its steps are shown before its grid replaces them. A move
+            // that left the grid unchanged has no steps.
             case MoveResult.Accepted accepted:
+                if (accepted.Grid.Position != _grid.Position)
+                {
+                    await Task.WhenAny(shown.Task, Task.Delay(ShowTimeout));
+                }
+
                 _grid = accepted.Grid;
                 break;
             case MoveResult.Rejected rejected:
@@ -53,6 +83,62 @@
         _grid = await Api.SetPositionAsync(_grid!.Id, position);
         _replays++;
     });
+
+    /// <summary>Starts showing the game's steps as they happen, instead of those of any earlier game.</summary>
+    private async Task WatchAsync(Guid id)
+    {
+        StopWatching();
+        _watching = new CancellationTokenSource();
+        var steps = await Api.WatchStepsAsync(id, _watching.Token);
+        _ = ShowAsync(steps, _watching.Token);
+    }
+
+    // Runs on the page's own synchronization context, as its event handlers do, so it can change the page.
+    private async Task ShowAsync(IAsyncEnumerable<GridStep?> steps, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await foreach (var step in steps.WithCancellation(cancellationToken))
+            {
+                if (step is null)
+                {
+                    _changed = null;
+                    if (_awaitedRead)
+                    {
+                        _shown?.TrySetResult();
+                    }
+                }
+                else if (_grid is not null)
+                {
+                    _awaitedRead |= step == _awaited;
+                    _grid = LiveCascade.Apply(_grid, step);
+                    _changed = step.Cell;
+                    StateHasChanged();
+                    await Task.Delay(StepPause, cancellationToken);
+                }
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            // Another game is shown now, or the page has closed.
+        }
+        catch (Exception exception) when (exception is HttpRequestException or IOException or System.Text.Json.JsonException)
+        {
+            _error = $"Stopped showing cascades as they run: {exception.Message}";
+            _changed = null;
+            _shown?.TrySetResult(); // the move shows its grid without them
+            StateHasChanged();
+        }
+    }
+
+    private void StopWatching()
+    {
+        _watching?.Cancel();
+        _watching?.Dispose();
+        _watching = null;
+    }
+
+    public void Dispose() => StopWatching();
 
     private async Task Call(string failure, Func<Task> call)
     {

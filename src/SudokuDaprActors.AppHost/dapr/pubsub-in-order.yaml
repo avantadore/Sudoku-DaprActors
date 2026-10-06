@@ -1,0 +1,21 @@
+# Steps travel on the same broker as everything else, but in order (ADR 0005): a publish waits until the broker has
+# queued the message, so a step is queued before anything its cell announces next, and the Api is handed one step at a
+# time, in that order. So every step reaches the watchers after the step that caused it.
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: pubsub-in-order
+spec:
+  type: pubsub.rabbitmq
+  version: v1
+  metadata:
+    - name: connectionString
+      secretKeyRef:
+        name: SUDOKU_MESSAGING
+        key: SUDOKU_MESSAGING
+    - name: publisherConfirm
+      value: "true"
+    - name: concurrencyMode
+      value: "single"
+auth:
+  secretStore: environment

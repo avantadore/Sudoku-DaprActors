@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using SudokuDaprActors.Core.Tests;
+using SudokuDaprActors.EndToEnd.Tests;
 
 namespace SudokuDaprActors.Api.Tests;
 
@@ -344,6 +345,28 @@ public class GameEndpointsTests(ApiFactory factory) : IClassFixture<ApiFactory>
     public async Task A_move_in_an_unknown_game_returns_404()
     {
         var response = await Move(Guid.NewGuid().ToString(), 1, 1, 1);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Watching_a_game_streams_each_moves_steps_then_the_end_of_them()
+    {
+        var id = await CreateGame();
+        await using var steps = await StepStream.OpenAsync(_client, id);
+
+        await Move(id, 2, 3, 8);
+
+        var read = await steps.ReadMoveAsync();
+        Assert.True(StepStream.IsPlacement(read[0], 2, 3, 8, "Move"));
+        Assert.Equal(20, read.Skip(1).Count(step => step.GetProperty("kind").GetString() == "Elimination"));
+        Assert.Equal(21, read.Count);
+    }
+
+    [Fact]
+    public async Task Watching_an_unknown_game_returns_404()
+    {
+        var response = await _client.GetAsync($"/games/{Guid.NewGuid()}/steps", Cancellation);
 
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }

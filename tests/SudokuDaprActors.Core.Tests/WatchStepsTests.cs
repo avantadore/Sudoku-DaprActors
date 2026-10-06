@@ -49,6 +49,29 @@ public class WatchStepsTests
     }
 
     [Fact]
+    public async Task A_watcher_reads_the_end_of_each_accepted_moves_steps_after_them_and_none_for_other_moves()
+    {
+        await using var game = await Broker.NewGameAsync();
+        var steps = await game.WatchStepsAsync();
+
+        await game.MoveAsync(1, 1, 5);
+        await game.MoveAsync(1, 1, 5); // unchanged
+        await game.MoveAsync(1, 2, 5); // rejected
+        await game.MoveAsync(9, 9, 1);
+        await game.DisposeAsync();
+
+        List<Step?> read = [];
+        await foreach (var step in steps.ReadStepsAndMoveEndsAsync(TestContext.Current.CancellationToken))
+        {
+            read.Add(step);
+        }
+
+        // Each accepted move: its placement, its 20 peers' eliminations, then the end of its steps.
+        Assert.Equal([21, 43], read.Select((step, index) => (step, index)).Where(item => item.step is null).Select(item => item.index));
+        Assert.Equal(44, read.Count);
+    }
+
+    [Fact]
     public async Task Disposing_a_game_completes_its_watchers_readers()
     {
         var game = await Broker.NewGameAsync();
