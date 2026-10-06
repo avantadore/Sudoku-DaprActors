@@ -1,0 +1,14 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SudokuDaprActors.Api/SudokuDaprActors.Api.csproj" />
+    <Project Path="src/SudokuDaprActors.AppHost/SudokuDaprActors.AppHost.csproj" />
+    <Project Path="src/SudokuDaprActors.Core/SudokuDaprActors.Core.csproj" />
+    <Project Path="src/SudokuDaprActors.ServiceDefaults/SudokuDaprActors.ServiceDefaults.csproj" />
+    <Project Path="src/SudokuDaprActors.Web/SudokuDaprActors.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SudokuDaprActors.Api.Tests/SudokuDaprActors.Api.Tests.csproj" />
+    <Project Path="tests/SudokuDaprActors.Core.Tests/SudokuDaprActors.Core.Tests.csproj" />
+    <Project Path="tests/SudokuDaprActors.Web.Tests/SudokuDaprActors.Web.Tests.csproj" />
+  </Folder>
+</Solution>
