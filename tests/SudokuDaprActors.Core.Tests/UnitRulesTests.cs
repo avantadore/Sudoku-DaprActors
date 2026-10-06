@@ -66,10 +66,14 @@ public class UnitRulesTests
     [Fact]
     public void Peers_losing_a_digit_heard_before_the_Filled_that_caused_it_deduce_into_the_filled_cell()
     {
-        // (4,8) was filled with 6, but the unit has not heard it yet, so it takes 6 for a hidden single there. The
-        // cell ignores the deduction, because it is already filled.
-        LoseInAllBut(6, 7, 8);
+        // (4,8) was filled with 6. The unit has heard it lose every other digit, but not that it was filled, so when
+        // its peers lose 6 it takes 6 for a hidden single there. The cell ignores the deduction, being already filled.
+        foreach (var digit in Enumerable.Range(1, 9).Except([6]))
+        {
+            _unit.CandidateLost(4, 8, digit);
+        }
 
+        LoseInAllBut(6, 7, 8);
         var reaction = _unit.CandidateLost(4, 7, 6);
 
         ReactionAssert.Equal(new Reaction { Deduction = new Command.PlaceDeduction(4, 8, 6) }, reaction);

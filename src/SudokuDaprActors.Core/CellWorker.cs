@@ -66,7 +66,7 @@ internal sealed class CellWorker : IAsyncDisposable
     {
         Command.PlaceMove move when IsThis(move) => PlaceMoveAsync(move),
         Command.PlaceDeduction deduction when IsThis(deduction) => PlaceDeductionAsync(deduction.Digit),
-        Event.Filled filled when !IsThis(filled) => CarryOutAsync(Apply(() => _rules.Eliminate(filled.Digit))),
+        Event.Filled filled when !IsThis(filled) => CarryOutAsync(Locked(() => _rules.Eliminate(filled.Digit))),
         _ => Task.CompletedTask,
     };
 
@@ -75,7 +75,7 @@ internal sealed class CellWorker : IAsyncDisposable
     private async Task PlaceMoveAsync(Command.PlaceMove move)
     {
         var reply = move.ReplyTo ?? throw new InvalidOperationException($"{move} has no reply address.");
-        var (outcome, reaction) = Apply(() => _rules.Move(move.Digit));
+        var (outcome, reaction) = Locked(() => _rules.Move(move.Digit));
         await Mailbox.ReplyAsync(reply, outcome);
         await CarryOutAsync(reaction);
     }
@@ -85,13 +85,19 @@ internal sealed class CellWorker : IAsyncDisposable
     private async Task PlaceDeductionAsync(int digit)
     {
         Reaction? reaction = null;
-        if (_switchboard.Deduce(() => (reaction = Apply(() => _rules.Deduce(digit))) is not null))
+        bool Place()
+        {
+            reaction = Locked(() => _rules.Deduce(digit));
+            return reaction is not null;
+        }
+
+        if (_switchboard.Deduce(Place))
         {
             await CarryOutAsync(reaction!);
         }
     }
 
-    private T Apply<T>(Func<T> rule)
+    private T Locked<T>(Func<T> rule)
     {
         lock (_state)
         {
