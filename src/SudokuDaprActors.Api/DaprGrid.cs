@@ -27,10 +27,10 @@ public sealed class DaprGridBackend(IActorProxyFactory actors, Cascades cascades
 
         public Task<IGrid> StartAsync() => Task.FromResult<IGrid>(new DaprGrid(Guid.NewGuid(), actors, cascades));
 
-        public void MakeCurrent(IGrid? grid)
+        public void MakeCurrent(IGrid grid)
         {
             _following?.Dispose();
-            _following = grid is DaprGrid current ? steps.Follow(current.Id, Read) : null;
+            _following = steps.Follow(((DaprGrid)grid).Id, Read);
         }
 
         public Task<IAsyncDisposable> WatchAsync(Action<Step> read)
@@ -41,7 +41,8 @@ public sealed class DaprGridBackend(IActorProxyFactory actors, Cascades cascades
 
         public ValueTask DisposeAsync()
         {
-            MakeCurrent(null);
+            _following?.Dispose();
+            _following = null;
             return ValueTask.CompletedTask;
         }
 

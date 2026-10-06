@@ -1,7 +1,8 @@
 using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
+using SudokuDaprActors.Core;
 
-namespace SudokuDaprActors.Core;
+namespace SudokuDaprActors.Api;
 
 /// <summary>
 /// One reader of a game's steps, from when it started watching. A move completes only once every watcher has read

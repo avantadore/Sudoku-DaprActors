@@ -1,7 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
-using SudokuDaprActors.Core.Tests;
 
 namespace SudokuDaprActors.EndToEnd.Tests;
 
@@ -40,6 +39,16 @@ internal static class GameApi
         }
 
         return await api.PlayAsync(id, 2, 7, 9);
+    }
+
+    /// <summary>Rows 1 and 9 hold 1–7 in columns 1–7, so (1,8), (1,9), (9,8) and (9,9) are left with 8 and 9.</summary>
+    public static async Task PlayRows1And9With1To7Async(this HttpClient api, string id)
+    {
+        for (var column = 1; column <= 7; column++)
+        {
+            await api.PlayAsync(id, 1, column, column);
+            await api.PlayAsync(id, 9, column, column % 7 + 1);
+        }
     }
 
     /// <summary>

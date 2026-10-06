@@ -1,4 +1,6 @@
-namespace SudokuDaprActors.Core;
+using SudokuDaprActors.Core;
+
+namespace SudokuDaprActors.Api;
 
 /// <summary>
 /// One 9×9 grid being filled in, one move at a time. Every game starts with all 81 cells empty. A game talks to its
@@ -9,16 +11,16 @@ public sealed class Game : IAsyncDisposable
     private readonly IGameGrids _grids;
     private readonly List<RecordedMove> _moves = [];
     private readonly List<StepWatcher> _watchers = [];
-    private readonly SemaphoreSlim _turn = new(1, 1); // one move, replay, watcher change or suspension at a time
+    private readonly SemaphoreSlim _turn = new(1, 1); // one move, replay or watcher change at a time
     private bool _disposed;
-    private volatile IGrid? _grid;
-    private volatile Suspended? _suspended;
+    private volatile IGrid _grid;
 
     private Game(Guid id, IGameGrids grids, IGrid grid)
     {
         Id = id;
         _grids = grids;
-        MakeCurrent(grid);
+        _grid = grid;
+        _grids.MakeCurrent(grid);
     }
 
     /// <summary>Starts a new game, with grids of its own on <paramref name="backend"/>.</summary>
@@ -39,7 +41,7 @@ public sealed class Game : IAsyncDisposable
 
     public Guid Id { get; }
 
-    public GameState State => _grid?.State ?? _suspended!.State;
+    public GameState State => _grid.State;
 
     /// <summary>The moves this game has accepted, in order.</summary>
     public IReadOnlyList<RecordedMove> Moves => _moves.AsReadOnly();
@@ -48,13 +50,9 @@ public sealed class Game : IAsyncDisposable
     public int Position { get; private set; }
 
     /// <summary>All 81 cells, row by row.</summary>
-    public IEnumerable<Cell> Cells => _grid?.Cells ?? _suspended!.Cells;
+    public IEnumerable<Cell> Cells => _grid.Cells;
 
-    public Cell Cell(int row, int column) =>
-        _grid?.Cell(row, column) ?? _suspended!.Cells.Single(cell => cell.Row == row && cell.Column == column);
-
-    /// <summary>Whether the grid has been put away to free what it runs on, to be rebuilt by replay on the next move.</summary>
-    public bool IsSuspended => _grid is null;
+    public Cell Cell(int row, int column) => _grid.Cell(row, column);
 
     /// <summary>
     /// A fresh reader of everything that happens to the grid from now on: each move, followed by the steps of its
@@ -95,12 +93,7 @@ public sealed class Game : IAsyncDisposable
         try
         {
             ObjectDisposedException.ThrowIf(_disposed, this);
-            if (_grid is null)
-            {
-                MakeCurrent(await BuildAsync(Position));
-            }
-
-            var (outcome, deductions) = await _grid!.MoveAsync(row, column, digit);
+            var (outcome, deductions) = await _grid.MoveAsync(row, column, digit);
             if (outcome is MoveOutcome.Accepted)
             {
                 _moves.RemoveRange(Position, _moves.Count - Position);
@@ -136,38 +129,10 @@ public sealed class Game : IAsyncDisposable
             ArgumentOutOfRangeException.ThrowIfGreaterThan(position, _moves.Count);
 
             var replaced = _grid;
-            MakeCurrent(await BuildAsync(position));
+            _grid = await BuildAsync(position);
+            _grids.MakeCurrent(_grid);
             Position = position;
-            if (replaced is not null)
-            {
-                await replaced.DisposeAsync();
-            }
-        }
-        finally
-        {
-            _turn.Release();
-        }
-    }
-
-    /// <summary>
-    /// Puts the grid away, freeing what it runs on, while keeping the game: its state and cells can still be read,
-    /// and its next move first rebuilds the grid by replaying to the position. A grid in contradiction may come back
-    /// as a different one (ADR 0003).
-    /// </summary>
-    public async Task SuspendAsync()
-    {
-        await _turn.WaitAsync();
-        try
-        {
-            if (_disposed || _grid is not { } grid)
-            {
-                return;
-            }
-
-            _suspended = new Suspended(grid.State, [.. grid.Cells]);
-            _grid = null;
-            _grids.MakeCurrent(null);
-            await grid.DisposeAsync();
+            await replaced.DisposeAsync();
         }
         finally
         {
@@ -196,11 +161,7 @@ public sealed class Game : IAsyncDisposable
             }
 
             _watchers.Clear();
-            if (_grid is { } grid)
-            {
-                await grid.DisposeAsync();
-            }
-
+            await _grid.DisposeAsync();
             await _grids.DisposeAsync();
         }
         finally
@@ -237,13 +198,6 @@ public sealed class Game : IAsyncDisposable
         }
     }
 
-    private void MakeCurrent(IGrid grid)
-    {
-        _grids.MakeCurrent(grid);
-        _grid = grid;
-        _suspended = null;
-    }
-
     private async ValueTask StopWatchingAsync(StepWatcher watcher)
     {
         await _turn.WaitAsync();
@@ -257,6 +211,4 @@ public sealed class Game : IAsyncDisposable
             _turn.Release();
         }
     }
-
-    private sealed record Suspended(GameState State, IReadOnlyList<Cell> Cells);
 }

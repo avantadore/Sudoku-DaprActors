@@ -1,20 +1,15 @@
 using System.Collections.Concurrent;
-using SudokuDaprActors.Core;
 
 namespace SudokuDaprActors.Api;
 
 /// <summary>
 /// Holds games in memory for the lifetime of the process. A game makes one move at a time by itself, but a request
 /// also reads the grid it leaves behind, so the store hands a game out only while holding that game's semaphore:
-/// one request at a time, held across its awaits. A grid on RabbitMQ streams costs streams and channels, so the Api
-/// has an idle game's grid suspended, to be rebuilt by replay on its next move (ADR 0004). A grid on Dapr actors costs
-/// nothing on the broker, so it is never suspended (ADR 0005).
+/// one request at a time, held across its awaits. A game's grid costs nothing on the broker, so it lives until a
+/// replay replaces it or the store is disposed (ADR 0005).
 /// </summary>
-public sealed class GameStore(IGridBackend grids, TimeProvider time, TimeSpan idleAfter) : IAsyncDisposable
+public sealed class GameStore(IGridBackend grids) : IAsyncDisposable
 {
-    /// <summary>How long a game may go unused before its grid is suspended, unless told otherwise.</summary>
-    public static readonly TimeSpan DefaultIdleAfter = TimeSpan.FromMinutes(5);
-
     private readonly ConcurrentDictionary<Guid, Entry> _games = new();
 
     /// <summary>Starts a new game, running <paramref name="use"/> on it before any other request can reach it.</summary>
@@ -22,7 +17,7 @@ public sealed class GameStore(IGridBackend grids, TimeProvider time, TimeSpan id
     {
         var game = await Game.NewAsync(grids);
         var result = use(game.Id, game);
-        _games[game.Id] = new Entry(game, time.GetUtcNow());
+        _games[game.Id] = new Entry(game);
         return result;
     }
 
@@ -44,36 +39,11 @@ public sealed class GameStore(IGridBackend grids, TimeProvider time, TimeSpan id
         }
         finally
         {
-            entry.LastUsed = time.GetUtcNow();
             entry.Turn.Release();
         }
     }
 
-    /// <summary>
-    /// Suspends the grid of every game not used for <c>idleAfter</c>, skipping any game a request is using right now.
-    /// </summary>
-    public async Task SuspendIdleAsync()
-    {
-        var now = time.GetUtcNow();
-        foreach (var entry in _games.Values)
-        {
-            if (now - entry.LastUsed < idleAfter || entry.Game.IsSuspended || !await entry.Turn.WaitAsync(TimeSpan.Zero))
-            {
-                continue;
-            }
-
-            try
-            {
-                await entry.Game.SuspendAsync();
-            }
-            finally
-            {
-                entry.Turn.Release();
-            }
-        }
-    }
-
-    /// <summary>Disposes every game, which frees what their grids run on.</summary>
+    /// <summary>Disposes every game, which forgets their grids.</summary>
     public async ValueTask DisposeAsync()
     {
         foreach (var entry in _games.Values)
@@ -84,23 +54,8 @@ public sealed class GameStore(IGridBackend grids, TimeProvider time, TimeSpan id
         _games.Clear();
     }
 
-    private sealed record Entry(Game Game, DateTimeOffset Created)
+    private sealed record Entry(Game Game)
     {
         public SemaphoreSlim Turn { get; } = new(1, 1);
-
-        public DateTimeOffset LastUsed { get; set; } = Created;
-    }
-}
-
-/// <summary>Suspends idle games' grids every minute.</summary>
-public sealed class IdleGameSuspender(GameStore store, TimeProvider time) : BackgroundService
-{
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        using var timer = new PeriodicTimer(TimeSpan.FromMinutes(1), time);
-        while (await timer.WaitForNextTickAsync(stoppingToken))
-        {
-            await store.SuspendIdleAsync();
-        }
     }
 }

@@ -132,8 +132,8 @@ public class ReplayTests(App app)
 
         var back = await app.Api.ReplayAsync(id, 6);
 
-        Assert.Equal("InProgress", back.GetProperty("state").GetString());
-        Assert.Equal("InProgress", (await app.Api.PlayAsync(id, 5, 5, 9)).GetProperty("state").GetString());
+        Assert.Equal("InProgress", StateOf(back));
+        Assert.Equal("InProgress", StateOf(await app.Api.PlayAsync(id, 5, 5, 9)));
     }
 
     [Fact]
@@ -146,6 +146,6 @@ public class ReplayTests(App app)
 
         var forward = await app.Api.ReplayAsync(id, 7);
 
-        Assert.Equal("Contradicted", forward.GetProperty("state").GetString());
+        Assert.Equal("Contradicted", StateOf(forward));
     }
 }

@@ -53,13 +53,7 @@ public class MoveHistoryTests(App app)
     public async Task A_move_into_contradiction_is_recorded_with_the_deductions_placed_before_its_cascade_stopped()
     {
         var id = await app.Api.CreateGameAsync();
-        // Rows 1 and 9 hold 1–7 in columns 1–7, so (1,8), (1,9), (9,8) and (9,9) are left with 8 and 9.
-        for (var column = 1; column <= 7; column++)
-        {
-            await app.Api.PlayAsync(id, 1, column, column);
-            await app.Api.PlayAsync(id, 9, column, column % 7 + 1);
-        }
-
+        await app.Api.PlayRows1And9With1To7Async(id);
         await using var steps = await StepStream.OpenAsync(app.Api, id);
 
         // 9 in column 9 leaves (1,9) and (9,9) with only 8, so 8 is deduced in one of them, which leaves the other

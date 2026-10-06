@@ -1,10 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
-    <PackageReference Include="RabbitMQ.Client" />
-  </ItemGroup>
-
-  <ItemGroup>
     <InternalsVisibleTo Include="SudokuDaprActors.Core.Tests" />
     <!-- The Cells service hosts the cell rules in Dapr actors (ADR 0005). -->
     <InternalsVisibleTo Include="SudokuDaprActors.Cells" />

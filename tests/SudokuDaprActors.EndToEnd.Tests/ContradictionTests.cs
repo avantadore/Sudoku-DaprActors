@@ -69,7 +69,7 @@ public class ContradictionTests(App app)
     public async Task A_cell_left_with_no_candidates_puts_the_game_in_contradiction_after_applying_the_move()
     {
         var id = await app.Api.CreateGameAsync();
-        await PlayRows1And9With1To7(id);
+        await app.Api.PlayRows1And9With1To7Async(id);
         await using var steps = await OpenAsync(app.Api, id);
 
         // 9 in column 9 leaves (1,9) and (9,9) both with only 8, which column 9 cannot hold twice.
@@ -84,7 +84,7 @@ public class ContradictionTests(App app)
     public async Task A_cascade_into_contradiction_counts_exactly_the_deductions_it_placed()
     {
         var id = await app.Api.CreateGameAsync();
-        await PlayRows1And9With1To7(id);
+        await app.Api.PlayRows1And9With1To7Async(id);
 
         // 9 in column 9 leaves (1,9) and (9,9) with only 8, so 8 is deduced in one of them, or both, which leaves a
         // cell with no candidates. How much else is deduced before the contradiction stops the cascade can vary.
@@ -109,16 +109,6 @@ public class ContradictionTests(App app)
         Assert.Equal(contradicted.GetRawText(), (await app.Api.GetGameAsync(id)).GetRawText());
         Assert.Equal(HttpStatusCode.OK, (await app.Api.GetCandidatesAsync(id, 5, 5)).StatusCode);
         Assert.False(await steps.ReadsAnythingWithinAsync(TimeSpan.FromSeconds(2)));
-    }
-
-    /// <summary>Rows 1 and 9 hold 1–7 in columns 1–7, so (1,8), (1,9), (9,8) and (9,9) are left with 8 and 9.</summary>
-    private async Task PlayRows1And9With1To7(string id)
-    {
-        for (var column = 1; column <= 7; column++)
-        {
-            await app.Api.PlayAsync(id, 1, column, column);
-            await app.Api.PlayAsync(id, 9, column, column % 7 + 1);
-        }
     }
 
     /// <summary>

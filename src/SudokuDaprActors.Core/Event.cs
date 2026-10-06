@@ -1,10 +1,10 @@
 namespace SudokuDaprActors.Core;
 
 /// <summary>
-/// A fact a cell announces on its row, column and box streams. Every reader of those streams hears it: the cell's
-/// peers and the units' watchers. An event is not a step: an observer never sees one.
+/// A fact a cell announces on its row, column and box topics. Its peers in those units hear it, and so do the units'
+/// actors (ADR 0005). An event is not a step: an observer never sees one.
 /// </summary>
-internal abstract record Event : IAboutCell
+internal abstract record Event
 {
     private Event(int row, int column)
     {
@@ -21,12 +21,4 @@ internal abstract record Event : IAboutCell
 
     /// <summary>The cell lost <paramref name="Digit"/> as a candidate, by elimination or because it was filled.</summary>
     public sealed record CandidateLost(int Row, int Column, int Digit) : Event(Row, Column);
-}
-
-/// <summary>A message about one cell, which carries it in its <c>row</c> and <c>column</c> headers.</summary>
-internal interface IAboutCell
-{
-    int Row { get; }
-
-    int Column { get; }
 }

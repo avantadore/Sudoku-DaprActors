@@ -1,4 +1,3 @@
-using SudokuDaprActors.Core.Tests;
 using static SudokuDaprActors.EndToEnd.Tests.GameApi;
 using static SudokuDaprActors.EndToEnd.Tests.StepAssert;
 
@@ -133,7 +132,7 @@ public class DeductionTests(App app)
 
         var grid = (await app.Api.PlayGivensAsync(id))[^1];
 
-        Assert.Equal("Solved", grid.GetProperty("state").GetString());
+        Assert.Equal("Solved", StateOf(grid));
         foreach (var (row, column, digit) in Puzzle.Solution)
         {
             var (placed, source) = PlacementOf(grid, row, column);

@@ -7,7 +7,8 @@ using Microsoft.Extensions.DependencyInjection;
 
 var builder = DistributedApplication.CreateBuilder(args);
 
-// The broker the grids talk on. No data volume: games live in the Api's memory, and their grids with them.
+// The broker behind Dapr pub/sub, which the grids talk on. No data volume: games live in the Api's memory, and their
+// grids in the in-memory actor state store.
 var messaging = builder.AddRabbitMQ("messaging")
     .WithManagementPlugin();
 
@@ -34,7 +35,6 @@ var cells = builder.AddProject<Projects.SudokuDaprActors_Cells>("cells")
 
 var api = builder.AddProject<Projects.SudokuDaprActors_Api>("api")
     .WithHttpHealthCheck("/health")
-    .WithEnvironment("Grid", "Dapr")
     .WithDaprSidecar(sidecar)
     .WaitFor(messaging)
     .WaitFor(cells);

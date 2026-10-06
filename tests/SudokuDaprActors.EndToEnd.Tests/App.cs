@@ -1,3 +1,5 @@
+using System.Net.Http.Headers;
+using System.Text;
 using Aspire.Hosting;
 using Aspire.Hosting.ApplicationModel;
 using Aspire.Hosting.Testing;
@@ -20,8 +22,8 @@ public class App : IAsyncLifetime
     /// <summary>A client of the Cells service's Dapr sidecar, which hosts the actors and reads their state.</summary>
     public HttpClient CellsSidecar { get; private set; } = null!;
 
-    /// <summary>The connection string of the broker that Dapr pub/sub runs on.</summary>
-    public string MessagingConnectionString { get; private set; } = null!;
+    /// <summary>A client of the management HTTP API of the broker that Dapr pub/sub runs on, signed in.</summary>
+    public HttpClient BrokerManagement { get; private set; } = null!;
 
     public async ValueTask InitializeAsync()
     {
@@ -33,13 +35,24 @@ public class App : IAsyncLifetime
         await _app.ResourceNotifications.WaitForResourceHealthyAsync("api", timeout.Token);
         Api = _app.CreateHttpClient("api");
         CellsSidecar = new HttpClient { BaseAddress = _app.GetEndpoint("cells-dapr-cli", "http") };
-        MessagingConnectionString = (await _app.GetConnectionStringAsync("messaging", timeout.Token))!;
+        BrokerManagement = await BrokerManagementAsync(_app, timeout.Token);
+    }
+
+    /// <summary>Signs in to the management API with the user and password of the broker's connection string.</summary>
+    private static async Task<HttpClient> BrokerManagementAsync(DistributedApplication app, CancellationToken cancellationToken)
+    {
+        var connectionString = new Uri((await app.GetConnectionStringAsync("messaging", cancellationToken))!);
+        var client = new HttpClient { BaseAddress = app.GetEndpoint("messaging", "management") };
+        client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue(
+            "Basic", Convert.ToBase64String(Encoding.UTF8.GetBytes(Uri.UnescapeDataString(connectionString.UserInfo))));
+        return client;
     }
 
     public async ValueTask DisposeAsync()
     {
         Api?.Dispose();
         CellsSidecar?.Dispose();
+        BrokerManagement?.Dispose();
         if (_app is not null)
         {
             await _app.DisposeAsync();

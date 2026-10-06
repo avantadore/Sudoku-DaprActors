@@ -1,4 +1,4 @@
-namespace SudokuDaprActors.Core.Tests;
+namespace SudokuDaprActors.EndToEnd.Tests;
 
 /// <summary>
 /// The example puzzle and its solution from https://en.wikipedia.org/wiki/Sudoku. It needs only naked and hidden

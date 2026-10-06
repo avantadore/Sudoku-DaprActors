@@ -9,7 +9,6 @@
     <Project Path="src/SudokuDaprActors.Web/SudokuDaprActors.Web.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/SudokuDaprActors.Api.Tests/SudokuDaprActors.Api.Tests.csproj" />
     <Project Path="tests/SudokuDaprActors.Core.Tests/SudokuDaprActors.Core.Tests.csproj" />
     <Project Path="tests/SudokuDaprActors.EndToEnd.Tests/SudokuDaprActors.EndToEnd.Tests.csproj" />
     <Project Path="tests/SudokuDaprActors.Web.Tests/SudokuDaprActors.Web.Tests.csproj" />

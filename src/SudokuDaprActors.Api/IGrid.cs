@@ -1,4 +1,6 @@
-namespace SudokuDaprActors.Core;
+using SudokuDaprActors.Core;
+
+namespace SudokuDaprActors.Api;
 
 /// <summary>
 /// A game's grid, as the game sees it wherever its cells run. The game makes one move at a time on it, and forgets it

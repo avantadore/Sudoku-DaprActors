@@ -1,4 +1,6 @@
-namespace SudokuDaprActors.Core;
+using SudokuDaprActors.Core;
+
+namespace SudokuDaprActors.Api;
 
 /// <summary>
 /// Where one game's grids run, and how their steps reach the game's watchers. Only the current grid's steps reach
@@ -11,10 +13,10 @@ public interface IGameGrids : IAsyncDisposable
     Task<IGrid> StartAsync();
 
     /// <summary>
-    /// From now on, the steps of <paramref name="grid"/> reach the watchers, and no other grid's; none at all while it
-    /// is null, as when the game is suspended. The grid is one this started. Only between moves.
+    /// From now on, the steps of <paramref name="grid"/> reach the watchers, and no other grid's. The grid is one this
+    /// started. Only between moves.
     /// </summary>
-    void MakeCurrent(IGrid? grid);
+    void MakeCurrent(IGrid grid);
 
     /// <summary>
     /// Starts reading the current grid's steps, from its next step on, handing each to <paramref name="read"/>. A move

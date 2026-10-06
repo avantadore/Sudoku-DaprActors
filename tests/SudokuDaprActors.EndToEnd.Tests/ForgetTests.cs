@@ -19,7 +19,7 @@ public class ForgetTests(App app)
     [Fact]
     public async Task A_replay_leaves_the_replaced_grids_actors_holding_no_state()
     {
-        await using var cascades = await CascadesOver.ListenAsync(app.MessagingConnectionString);
+        await using var cascades = await CascadesOver.ListenAsync(app.BrokerManagement);
         var id = await app.Api.CreateGameAsync();
         // In contradiction, so the grid's actor holds state too.
         await app.Api.PlayIntoContradictionAsync(id);
